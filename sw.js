@@ -1,4 +1,4 @@
-const CACHE_NAME = "reception-crm-v1";
+const CACHE_NAME = "reception-crm-v2";
 const ASSETS = ["./", "./index.html", "./app.js", "./manifest.json"];
 
 self.addEventListener("install", event => {
@@ -13,11 +13,20 @@ self.addEventListener("activate", event => {
   self.clients.claim();
 });
 
-// Network-first pour les données (Supabase), cache-first pour les fichiers de l'appli
+// Network-first pour tout : on essaie toujours d'aller chercher la version la
+// plus récente en ligne, et on ne retombe sur le cache qu'en cas de perte de
+// réseau (mode hors-ligne). Évite de rester bloqué sur une ancienne version
+// de l'appli après une mise à jour de app.js.
 self.addEventListener("fetch", event => {
   const url = event.request.url;
   if (url.includes("supabase.co")) return; // laisser passer les appels API tels quels
   event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request))
+    fetch(event.request)
+      .then(response => {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
