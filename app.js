@@ -10,6 +10,17 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Détecte le clic sur le lien de réinitialisation reçu par email : Supabase
+// authentifie temporairement l'utilisateur et déclenche cet évènement pour
+// qu'il puisse choisir un nouveau mot de passe.
+sb.auth.onAuthStateChange((event) => {
+  if (event === "PASSWORD_RECOVERY") {
+    document.getElementById("app-screen").style.display = "none";
+    document.getElementById("auth-screen").style.display = "flex";
+    setAuthMode("reset");
+  }
+});
+
 // ---- 2) CONSTANTES (identiques à reception_crm.py) ----
 const TYPES_EVENEMENT = ["Mariage", "Anniversaire", "Baptême", "Séminaire", "Autre"];
 const STATUTS_PROSPECT = ["Nouveau", "Contacté", "Qualifié", "Devis envoyé", "Converti", "Perdu"];
@@ -133,19 +144,50 @@ function setAuthMode(mode) {
   const submit = document.getElementById("auth-submit");
   const switchText = document.getElementById("auth-switch-text");
   const switchLink = document.getElementById("auth-switch-link");
+  const switchRow = document.getElementById("auth-switch");
+  const emailEl = document.getElementById("auth-email");
+  const passEl = document.getElementById("auth-password");
+  const passConfirmEl = document.getElementById("auth-password-confirm");
+  const forgotRow = document.getElementById("auth-forgot-row");
   document.getElementById("auth-error").style.display = "none";
+
+  // Valeurs par défaut, chaque mode ajuste ce qu'il faut en plus
+  emailEl.style.display = "block";
+  passEl.style.display = "block";
+  passConfirmEl.style.display = "none";
+  forgotRow.style.display = "none";
+  switchRow.style.display = "block";
+
   if (mode === "login") {
     title.textContent = "Connexion";
     sub.textContent = "CRM Espace Réception CBLF — accède à ton compte";
     submit.textContent = "Se connecter";
     switchText.textContent = "Pas encore de compte ?";
     switchLink.textContent = "Créer un compte";
-  } else {
+    passEl.placeholder = "Mot de passe";
+    forgotRow.style.display = "block";
+  } else if (mode === "signup") {
     title.textContent = "Créer un compte";
     sub.textContent = "CRM Espace Réception CBLF — synchronise tes données";
     submit.textContent = "Créer mon compte";
     switchText.textContent = "Déjà un compte ?";
     switchLink.textContent = "Se connecter";
+    passEl.placeholder = "Mot de passe";
+  } else if (mode === "forgot") {
+    title.textContent = "Mot de passe oublié";
+    sub.textContent = "Reçois un lien par email pour le réinitialiser";
+    submit.textContent = "Envoyer le lien";
+    passEl.style.display = "none";
+    switchText.textContent = "";
+    switchLink.textContent = "Retour à la connexion";
+  } else if (mode === "reset") {
+    title.textContent = "Nouveau mot de passe";
+    sub.textContent = "Choisis un nouveau mot de passe pour ton compte";
+    submit.textContent = "Enregistrer le nouveau mot de passe";
+    emailEl.style.display = "none";
+    passEl.placeholder = "Nouveau mot de passe";
+    passConfirmEl.style.display = "block";
+    switchRow.style.display = "none";
   }
 }
 
@@ -158,6 +200,31 @@ function authError(msg) {
 async function handleAuthSubmit() {
   const email = document.getElementById("auth-email").value.trim();
   const password = document.getElementById("auth-password").value;
+  const passwordConfirm = document.getElementById("auth-password-confirm").value;
+
+  if (authMode === "forgot") {
+    if (!email) { authError("Renseigne ton adresse email."); return; }
+    const { error } = await sb.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname,
+    });
+    if (error) { authError(error.message); return; }
+    showToast("Email envoyé — vérifie ta boîte de réception.");
+    setAuthMode("login");
+    return;
+  }
+
+  if (authMode === "reset") {
+    if (!password || password.length < 6) { authError("Le mot de passe doit contenir au moins 6 caractères."); return; }
+    if (password !== passwordConfirm) { authError("Les deux mots de passe ne correspondent pas."); return; }
+    const { error } = await sb.auth.updateUser({ password });
+    if (error) { authError(error.message); return; }
+    showToast("Mot de passe mis à jour !");
+    const { data } = await sb.auth.getSession();
+    if (data.session) onLoggedIn(data.session.user);
+    else setAuthMode("login");
+    return;
+  }
+
   if (!email || !password) { authError("Renseigne un email et un mot de passe."); return; }
 
   if (authMode === "login") {
@@ -820,8 +887,14 @@ function confirmDelete(table, id, afterFn) {
 document.addEventListener("DOMContentLoaded", () => {
   // Auth
   document.getElementById("auth-submit").addEventListener("click", handleAuthSubmit);
-  document.getElementById("auth-switch-link").addEventListener("click", () => setAuthMode(authMode === "login" ? "signup" : "login"));
+  document.getElementById("auth-switch-link").addEventListener("click", () => {
+    if (authMode === "forgot") setAuthMode("login");
+    else setAuthMode(authMode === "login" ? "signup" : "login");
+  });
+  document.getElementById("auth-forgot-link").addEventListener("click", () => setAuthMode("forgot"));
   document.getElementById("auth-password").addEventListener("keydown", e => { if (e.key === "Enter") handleAuthSubmit(); });
+  document.getElementById("auth-password-confirm").addEventListener("keydown", e => { if (e.key === "Enter") handleAuthSubmit(); });
+  document.getElementById("auth-email").addEventListener("keydown", e => { if (e.key === "Enter") handleAuthSubmit(); });
   document.getElementById("logout-btn").addEventListener("click", handleLogout);
 
   // Nav
@@ -875,7 +948,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Session existante ?
   sb.auth.getSession().then(({ data }) => {
-    if (data.session) onLoggedIn(data.session.user);
+    if (data.session && !window.location.hash.includes("type=recovery")) {
+      onLoggedIn(data.session.user);
+    }
   });
 
   // Service worker (PWA)

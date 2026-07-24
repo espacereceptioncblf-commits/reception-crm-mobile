@@ -130,8 +130,12 @@
     <div class="auth-error" id="auth-error"></div>
     <input type="email" id="auth-email" placeholder="Adresse email" autocomplete="username">
     <input type="password" id="auth-password" placeholder="Mot de passe" autocomplete="current-password">
+    <input type="password" id="auth-password-confirm" placeholder="Confirme le nouveau mot de passe" autocomplete="new-password" style="display:none;">
+    <div id="auth-forgot-row" style="text-align:right;margin:-6px 0 14px;">
+      <a id="auth-forgot-link" style="font-size:12.5px;color:var(--accent);cursor:pointer;text-decoration:none;">Mot de passe oublié ?</a>
+    </div>
     <button class="primary" id="auth-submit">Se connecter</button>
-    <div class="auth-switch">
+    <div class="auth-switch" id="auth-switch">
       <span id="auth-switch-text">Pas encore de compte ?</span>
       <a id="auth-switch-link">Créer un compte</a>
     </div>
