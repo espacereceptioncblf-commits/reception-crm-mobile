@@ -136,13 +136,13 @@ function setAuthMode(mode) {
   document.getElementById("auth-error").style.display = "none";
   if (mode === "login") {
     title.textContent = "Connexion";
-    sub.textContent = "Gestion Réception — accède à ton compte";
+    sub.textContent = "CRM Espace Réception CBLF — accède à ton compte";
     submit.textContent = "Se connecter";
     switchText.textContent = "Pas encore de compte ?";
     switchLink.textContent = "Créer un compte";
   } else {
     title.textContent = "Créer un compte";
-    sub.textContent = "Gestion Réception — synchronise tes données";
+    sub.textContent = "CRM Espace Réception CBLF — synchronise tes données";
     submit.textContent = "Créer mon compte";
     switchText.textContent = "Déjà un compte ?";
     switchLink.textContent = "Se connecter";
