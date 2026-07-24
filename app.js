@@ -18,6 +18,20 @@ const STATUTS_EVENEMENT = ["Option", "Confirmé", "Terminé", "Annulé"];
 const STATUTS_TODO = ["À faire", "En cours", "Terminé"];
 const PRIORITES = ["Basse", "Normale", "Haute", "Urgente"];
 const SOURCES_PROSPECT = ["Site web", "Téléphone", "Bouche à oreille", "Réseaux sociaux", "Salon", "Recommandation", "Autre"];
+const STATUTS_FACTURE = ["Impayée", "Payée", "En retard"];
+
+// Coordonnées affichées en en-tête des factures imprimées / PDF.
+// À compléter avec tes informations (nom commercial, adresse, SIRET,
+// n° TVA intracommunautaire si applicable...). Vérifie auprès de ton
+// comptable les mentions légales obligatoires sur une facture en France.
+const ENTREPRISE = {
+  nom: "SAS CLF",
+  adresse: "5580 route de Grisolles, 31620 Fronton",
+  siret: "94489133200016",
+  tva: "",
+  email: "espacereceptioncblf@gmail.com",
+  telephone: "07 43 01 54 64",
+};
 
 const STATUT_COLORS = {
   "Nouveau": "var(--info)", "Contacté": "var(--warning)", "Qualifié": "var(--accent)",
@@ -26,11 +40,12 @@ const STATUT_COLORS = {
   "Refusé": "var(--danger)", "Expiré": "var(--muted)",
   "Option": "var(--warning)", "Confirmé": "var(--success)", "Terminé": "var(--muted)", "Annulé": "var(--danger)",
   "À faire": "var(--info)", "En cours": "var(--warning)",
+  "Impayée": "var(--warning)", "Payée": "var(--success)", "En retard": "var(--danger)",
 };
 
 // ---- 3) ETAT LOCAL (cache en mémoire, resynchronisé à chaque page) ----
 let currentUser = null;
-let cache = { contacts: [], prospects: [], devis: [], evenements: [], todos: [] };
+let cache = { contacts: [], prospects: [], devis: [], evenements: [], todos: [], factures: [] };
 let currentPage = "dashboard";
 let modalContext = null; // { table, id, onSaved }
 let calState = { year: new Date().getFullYear(), month: new Date().getMonth() + 1, selected: null };
@@ -65,6 +80,11 @@ function contactLabel(c) {
 }
 function findContact(id) { return cache.contacts.find(c => c.id === id); }
 function findDevis(id) { return cache.devis.find(d => d.id === id); }
+function findFacture(id) { return cache.factures.find(f => f.id === id); }
+function escapeHtml(s) {
+  if (s == null) return "";
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
 
 // ---- 5) SUPABASE CRUD GENERIQUE ----
 async function fetchAll(table, orderCol = "id", ascending = false) {
@@ -90,14 +110,15 @@ async function deleteRow(table, id) {
   return true;
 }
 async function refreshCache() {
-  const [contacts, prospects, devisRows, evenements, todos] = await Promise.all([
+  const [contacts, prospects, devisRows, evenements, todos, factures] = await Promise.all([
     fetchAll("contacts", "nom", true),
     fetchAll("prospects"),
     fetchAll("devis"),
     fetchAll("evenements"),
     fetchAll("todos"),
+    fetchAll("factures"),
   ]);
-  cache = { contacts, prospects, devis: devisRows, evenements, todos };
+  cache = { contacts, prospects, devis: devisRows, evenements, todos, factures };
 }
 
 // ========================================================================
@@ -192,6 +213,7 @@ function renderPage(key) {
   else if (key === "todo") renderTodo();
   else if (key === "prospects") renderProspects();
   else if (key === "devis") renderDevis();
+  else if (key === "facturation") renderFacturation();
   else if (key === "contacts") renderContacts();
   else if (key === "evenements") renderEvenements();
   else if (key === "calendrier") renderCalendrier();
@@ -212,11 +234,13 @@ function renderDashboard() {
   const devisEnAttente = cache.devis.filter(d => d.statut === "Envoyé").length;
   const evenementsAvenir = cache.evenements.filter(e => e.date_evenement >= today).length;
   const todosOuvertes = cache.todos.filter(t => t.statut !== "Terminé").length;
+  const facturesImpayees = cache.factures.filter(f => f.statut !== "Payée").length;
 
   const cardsHtml = [
     ["👤", nbContacts, "Contacts"],
     ["🎯", prospectsActifs, "Prospects actifs"],
     ["📄", devisEnAttente, "Devis en attente"],
+    ["💶", facturesImpayees, "Factures impayées"],
     ["🎉", evenementsAvenir, "Évènements à venir"],
     ["✅", todosOuvertes, "Tâches en cours"],
   ].map(([icon, num, label]) => `
@@ -231,6 +255,7 @@ function renderDashboard() {
   cache.contacts.forEach(c => activity.push({ date: c.date_creation || "", type: "Contact", detail: contactLabel(c) }));
   cache.evenements.forEach(e => activity.push({ date: e.date_creation || "", type: "Évènement", detail: e.titre || "" }));
   cache.devis.forEach(d => activity.push({ date: d.date_creation || "", type: "Devis", detail: d.numero || "" }));
+  cache.factures.forEach(f => activity.push({ date: f.date_creation || "", type: "Facture", detail: f.numero || "" }));
   cache.todos.forEach(t => activity.push({ date: t.date_creation || "", type: "Tâche", detail: t.titre || "" }));
   activity.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
@@ -388,6 +413,172 @@ function openDevisDialog(id) {
     ],
     onSaved: refreshAll,
   });
+}
+
+// ========================================================================
+//  FACTURATION
+// ========================================================================
+function nextFactureNumero() {
+  const year = new Date().getFullYear();
+  const prefix = `FAC-${year}-`;
+  const nums = cache.factures
+    .filter(f => (f.numero || "").startsWith(prefix))
+    .map(f => parseInt((f.numero || "").slice(prefix.length), 10) || 0);
+  const next = (nums.length ? Math.max(...nums) : 0) + 1;
+  return prefix + String(next).padStart(3, "0");
+}
+
+// Devis acceptés qui n'ont pas encore de facture liée
+function devisAFacturerOptionsHtml() {
+  const facturedIds = new Set(cache.factures.map(f => f.devis_id).filter(Boolean));
+  return cache.devis
+    .filter(d => d.statut === "Accepté" && !facturedIds.has(d.id))
+    .map(d => `<option value="${d.id}">${d.numero || ("Devis #" + d.id)} — ${contactLabel(findContact(d.contact_id))}</option>`)
+    .join("");
+}
+
+function renderFacturation() {
+  ensureFilterOptions("facture-filter-statut", STATUTS_FACTURE);
+  const filter = document.getElementById("facture-filter-statut").value;
+  const today = todayStr();
+
+  const sourceSel = document.getElementById("facture-source-devis");
+  const currentSourceVal = sourceSel.value;
+  sourceSel.innerHTML = `<option value="">Choisir un devis accepté…</option>` + devisAFacturerOptionsHtml();
+  if ([...sourceSel.options].some(o => o.value === currentSourceVal)) sourceSel.value = currentSourceVal;
+
+  const displayStatut = f => (f.statut === "Impayée" && f.date_echeance && f.date_echeance < today) ? "En retard" : f.statut;
+
+  let rows = [...cache.factures].sort((a, b) => (b.date_facture || "").localeCompare(a.date_facture || ""));
+  if (filter) rows = rows.filter(f => displayStatut(f) === filter);
+
+  const tbody = document.getElementById("facture-tbody");
+  tbody.innerHTML = rows.length ? rows.map(f => `
+    <tr>
+      <td>${f.numero || "—"}</td>
+      <td>${contactLabel(findContact(f.contact_id))}</td>
+      <td>${fmtDateFR(f.date_facture)}</td>
+      <td>${fmtDateFR(f.date_echeance)}</td>
+      <td>${f.montant_ttc != null ? f.montant_ttc + " €" : "—"}</td>
+      <td>${badge(displayStatut(f), STATUT_COLORS[displayStatut(f)])}</td>
+      <td class="row-actions">
+        <button onclick="printFacture(${f.id})" title="Imprimer / PDF">🖨</button>
+        <button onclick="openFactureDialog(${f.id})">✎</button>
+        <button onclick="confirmDelete('factures', ${f.id}, renderFacturation)">🗑</button>
+      </td>
+    </tr>`).join("") : `<tr class="empty-row"><td colspan="7">Aucune facture — génère-en une depuis un devis accepté</td></tr>`;
+}
+
+function facturationFieldSet(row) {
+  return [
+    { key: "numero", label: "Numéro", type: "text", required: true, value: row.numero },
+    { key: "devis_id", label: "Devis lié", type: "select-raw", optionsHtml: `<option value="">—</option>` + devisOptionsHtml(row.devis_id), value: row.devis_id, numeric: true },
+    { key: "contact_id", label: "Contact", type: "select-raw", optionsHtml: `<option value="">—</option>` + contactOptionsHtml(row.contact_id), value: row.contact_id, numeric: true },
+    { key: "date_facture", label: "Date facture", type: "date", value: row.date_facture },
+    { key: "date_echeance", label: "Échéance de paiement", type: "date", value: row.date_echeance },
+    { key: "montant_ht", label: "Montant HT (€)", type: "number", value: row.montant_ht },
+    { key: "montant_ttc", label: "Montant TTC (€)", type: "number", value: row.montant_ttc },
+    { key: "statut", label: "Statut", type: "select", options: STATUTS_FACTURE, value: row.statut || "Impayée" },
+    { key: "date_paiement", label: "Date de paiement", type: "date", value: row.date_paiement },
+    { key: "notes", label: "Notes", type: "textarea", value: row.notes },
+  ];
+}
+
+function handleNewFactureClick() {
+  const devisId = Number(document.getElementById("facture-source-devis").value) || null;
+  if (!devisId) { showToast("Sélectionne d'abord un devis accepté dans la liste"); return; }
+  const devis = findDevis(devisId);
+  if (!devis) return;
+  const echeance = new Date();
+  echeance.setDate(echeance.getDate() + 30);
+
+  openModal({
+    title: "Générer une facture",
+    table: "factures",
+    id: null,
+    fields: facturationFieldSet({
+      numero: nextFactureNumero(),
+      devis_id: devisId,
+      contact_id: devis.contact_id,
+      date_facture: todayStr(),
+      date_echeance: echeance.toISOString().slice(0, 10),
+      montant_ht: devis.montant_ht,
+      montant_ttc: devis.montant_ttc,
+      statut: "Impayée",
+      notes: devis.notes,
+    }),
+    onSaved: refreshAll,
+  });
+}
+
+function openFactureDialog(id) {
+  const row = id ? (cache.factures.find(f => f.id === id) || {}) : {};
+  openModal({
+    title: id ? "Modifier la facture" : "Nouvelle facture",
+    table: "factures",
+    id: id,
+    fields: facturationFieldSet(row),
+    onSaved: refreshAll,
+  });
+}
+
+function printFacture(id) {
+  const f = findFacture(id);
+  if (!f) return;
+  const contact = findContact(f.contact_id);
+  const devis = f.devis_id ? findDevis(f.devis_id) : null;
+  const w = window.open("", "_blank");
+  if (!w) { showToast("Autorise les pop-ups pour imprimer / exporter en PDF"); return; }
+
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Facture ${escapeHtml(f.numero || "")}</title>
+<style>
+  body{font-family:Helvetica,Arial,sans-serif;color:#20222A;padding:40px;max-width:720px;margin:0 auto;}
+  h1{font-size:22px;margin:0 0 4px;}
+  .muted{color:#8A8F98;font-size:12.5px;}
+  .row{display:flex;justify-content:space-between;gap:30px;margin:28px 0;}
+  .box{font-size:13px;line-height:1.5;}
+  table{width:100%;border-collapse:collapse;margin-top:24px;}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #E4E3DE;font-size:13px;}
+  th{color:#8A8F98;text-transform:uppercase;font-size:11px;}
+  .total{text-align:right;font-size:15px;font-weight:bold;margin-top:16px;}
+  .legal{margin-top:50px;font-size:11px;color:#8A8F98;}
+  @media print{ body{padding:0;} }
+</style></head><body>
+  <h1>Facture ${escapeHtml(f.numero || "")}</h1>
+  <div class="muted">Date : ${fmtDateFR(f.date_facture)} — Échéance : ${fmtDateFR(f.date_echeance)}</div>
+  <div class="row">
+    <div class="box">
+      <strong>${escapeHtml(ENTREPRISE.nom)}</strong><br>
+      ${escapeHtml(ENTREPRISE.adresse).replace(/\n/g, "<br>")}<br>
+      ${ENTREPRISE.siret ? "SIRET : " + escapeHtml(ENTREPRISE.siret) + "<br>" : ""}
+      ${ENTREPRISE.tva ? escapeHtml(ENTREPRISE.tva) + "<br>" : ""}
+      ${escapeHtml(ENTREPRISE.email || "")} ${escapeHtml(ENTREPRISE.telephone || "")}
+    </div>
+    <div class="box">
+      <strong>Facturé à</strong><br>
+      ${contact ? escapeHtml(contactLabel(contact)) : "—"}<br>
+      ${contact && contact.societe ? escapeHtml(contact.societe) + "<br>" : ""}
+      ${contact && contact.adresse ? escapeHtml(contact.adresse).replace(/\n/g, "<br>") + "<br>" : ""}
+      ${contact && contact.email ? escapeHtml(contact.email) : ""}
+    </div>
+  </div>
+  <table>
+    <thead><tr><th>Désignation</th><th>Montant HT</th><th>Montant TTC</th></tr></thead>
+    <tbody><tr>
+      <td>${devis ? escapeHtml(devis.type_evenement || "Prestation") + (devis.date_evenement ? " — " + fmtDateFR(devis.date_evenement) : "") : "Prestation"}</td>
+      <td>${f.montant_ht != null ? f.montant_ht + " €" : "—"}</td>
+      <td>${f.montant_ttc != null ? f.montant_ttc + " €" : "—"}</td>
+    </tr></tbody>
+  </table>
+  <div class="total">Total TTC à payer : ${f.montant_ttc != null ? f.montant_ttc + " €" : "—"}</div>
+  ${f.notes ? `<div class="box" style="margin-top:20px;"><strong>Notes</strong><br>${escapeHtml(f.notes).replace(/\n/g, "<br>")}</div>` : ""}
+  <div class="legal">${f.statut === "Payée" ? "Facture acquittée." : "Facture à régler avant le " + fmtDateFR(f.date_echeance) + "."} En cas de retard de paiement, une pénalité pourra être appliquée conformément aux conditions générales de vente.</div>
+</body></html>`;
+
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(() => w.print(), 300);
 }
 
 // ========================================================================
@@ -648,6 +839,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-new-devis").addEventListener("click", () => openDevisDialog(null));
   document.getElementById("btn-new-contact").addEventListener("click", () => openContactDialog(null));
   document.getElementById("btn-new-evenement").addEventListener("click", () => openEvenementDialog(null));
+  document.getElementById("btn-new-facture").addEventListener("click", handleNewFactureClick);
 
   // Modal
   document.getElementById("modal-cancel").addEventListener("click", closeModal);
