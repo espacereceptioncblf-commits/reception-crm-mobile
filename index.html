@@ -147,6 +147,7 @@
       <div class="nav-item" data-page="todo">✅  To Do List</div>
       <div class="nav-item" data-page="prospects">🎯  Suivi Prospects</div>
       <div class="nav-item" data-page="devis">📄  Devis</div>
+      <div class="nav-item" data-page="factures">🧾  Facturation</div>
       <div class="nav-item" data-page="grille">💶  Grille Tarifaire</div>
       <div class="nav-item" data-page="contacts">👤  Contacts</div>
       <div class="nav-item" data-page="evenements">🎉  Évènements</div>
@@ -162,6 +163,7 @@
       <div class="toolbar">
         <span class="lbl">Raccourcis :</span>
         <button class="shortcut-btn" id="sc-devis">＋ Nouveau devis</button>
+        <button class="shortcut-btn" id="sc-facture">＋ Nouvelle facture</button>
         <button class="shortcut-btn" id="sc-contact">＋ Nouveau contact</button>
         <button class="shortcut-btn" id="sc-evenement">＋ Nouvel évènement</button>
         <button class="shortcut-btn" id="sc-rdv">＋ Nouveau RDV</button>
@@ -230,6 +232,22 @@
           <table class="data">
             <thead><tr><th>N°</th><th>Contact</th><th>Type</th><th>Date évènement</th><th>Montant TTC</th><th>Acompte</th><th>Statut</th><th></th></tr></thead>
             <tbody id="devis-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- FACTURATION -->
+        <div class="page" id="page-factures">
+          <div class="page-title">Facturation</div>
+          <div class="page-toolbar">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <input class="filter" id="facture-search" placeholder="Rechercher un client…" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
+              <select class="filter" id="facture-filter-statut"><option value="">Tous les statuts</option></select>
+            </div>
+            <button class="btn" id="btn-new-facture">＋ Nouvelle facture</button>
+          </div>
+          <table class="data">
+            <thead><tr><th>N°</th><th>Contact</th><th>Devis lié</th><th>Date</th><th>Montant TTC</th><th>Statut</th><th></th></tr></thead>
+            <tbody id="facture-tbody"></tbody>
           </table>
         </div>
 

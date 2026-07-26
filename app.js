@@ -14,6 +14,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const TYPES_EVENEMENT = ["Mariage", "Anniversaire", "Baptême", "Séminaire", "Autre"];
 const STATUTS_PROSPECT = ["Nouveau", "Contacté", "Qualifié", "Devis envoyé", "Converti", "Perdu"];
 const STATUTS_DEVIS = ["Brouillon", "Envoyé", "Accepté", "Refusé", "Expiré"];
+const STATUTS_FACTURE = ["Brouillon", "Envoyée", "Payée", "Partiellement payée", "En retard", "Annulée"];
 const STATUTS_EVENEMENT = ["Option", "Confirmé", "Terminé", "Annulé"];
 const STATUTS_TODO = ["À faire", "En cours", "Terminé"];
 const STATUTS_RDV = ["Prévu", "Confirmé", "Effectué", "Annulé"];
@@ -22,6 +23,15 @@ const SOURCES_PROSPECT = ["Site web", "Téléphone", "Bouche à oreille", "Rése
 const CATEGORIES_CONTACT = ["Client", "Prospect", "Partenaire", "Fournisseur", "Traiteur"];
 const FORMULES = ["Clef en main", "Location salle"];
 const TVA_RATES = [0, 5.5, 8, 10, 20];
+
+// Coordonnées de l'entreprise émettrice (en-tête des devis / factures)
+const EMETTEUR = {
+  nom: "SAS CLF",
+  adresse: "5580 route de Grisolles, 31620 Fronton",
+  siret: "SIRET 944 891 332 00016",
+  email: "espacereceptioncblf@gmail.com",
+  telephone: "07 43 01 54 64",
+};
 
 const STATUT_COLORS = {
   "Nouveau": "var(--info)", "Contacté": "var(--warning)", "Qualifié": "var(--accent)",
@@ -33,11 +43,13 @@ const STATUT_COLORS = {
   "Prévu": "var(--info)", "Effectué": "var(--success)",
   "Client": "var(--success)", "Prospect": "var(--info)", "Partenaire": "var(--accent)",
   "Fournisseur": "var(--warning)", "Traiteur": "var(--warning)",
+  "Envoyée": "var(--warning)", "Payée": "var(--success)", "Partiellement payée": "var(--info)",
+  "En retard": "var(--danger)", "Annulée": "var(--danger)",
 };
 
 // ---- 3) ETAT LOCAL ----
 let currentUser = null;
-let cache = { contacts: [], prospects: [], devis: [], evenements: [], todos: [], grille_tarifaire: [], rdv: [] };
+let cache = { contacts: [], prospects: [], devis: [], evenements: [], todos: [], grille_tarifaire: [], rdv: [], factures: [] };
 let currentPage = "dashboard";
 let modalContext = null; // { table, id, fields, onSaved, onRender, beforeSave }
 let calState = { year: new Date().getFullYear(), month: new Date().getMonth() + 1, selected: null };
@@ -97,7 +109,7 @@ async function deleteRow(table, id) {
   return true;
 }
 async function refreshCache() {
-  const [contacts, prospects, devisRows, evenements, todos, grille, rdv] = await Promise.all([
+  const [contacts, prospects, devisRows, evenements, todos, grille, rdv, factures] = await Promise.all([
     fetchAll("contacts", "nom", true),
     fetchAll("prospects"),
     fetchAll("devis"),
@@ -105,9 +117,11 @@ async function refreshCache() {
     fetchAll("todos"),
     fetchAll("grille_tarifaire", "nom_presta", true),
     fetchAll("rdv"),
+    fetchAll("factures"),
   ]);
-  cache = { contacts, prospects, devis: devisRows, evenements, todos, grille_tarifaire: grille, rdv };
+  cache = { contacts, prospects, devis: devisRows, evenements, todos, grille_tarifaire: grille, rdv, factures };
 }
+function findFacture(id) { return cache.factures.find(f => f.id === id); }
 
 // ========================================================================
 //  AUTHENTIFICATION
@@ -201,6 +215,7 @@ function renderPage(key) {
   else if (key === "todo") renderTodo();
   else if (key === "prospects") renderProspects();
   else if (key === "devis") renderDevis();
+  else if (key === "factures") renderFactures();
   else if (key === "grille") renderGrille();
   else if (key === "contacts") renderContacts();
   else if (key === "evenements") renderEvenements();
@@ -223,12 +238,14 @@ function renderDashboard() {
   const devisEnAttente = cache.devis.filter(d => d.statut === "Envoyé").length;
   const evenementsAvenir = cache.evenements.filter(e => e.date_evenement >= today).length;
   const rdvAvenir = cache.rdv.filter(r => (r.date_rdv || "") >= today && r.statut !== "Annulé").length;
+  const facturesImpayees = cache.factures.filter(f => ["Envoyée", "En retard", "Partiellement payée"].includes(f.statut)).length;
   const todosOuvertes = cache.todos.filter(t => t.statut !== "Terminé").length;
 
   const cardsHtml = [
     ["👤", nbContacts, "Contacts"],
     ["🎯", prospectsActifs, "Prospects actifs"],
     ["📄", devisEnAttente, "Devis en attente"],
+    ["🧾", facturesImpayees, "Factures impayées"],
     ["🤝", rdvAvenir, "RDV à venir"],
     ["🎉", evenementsAvenir, "Évènements à venir"],
     ["✅", todosOuvertes, "Tâches en cours"],
@@ -448,6 +465,7 @@ function renderDevis() {
       <td class="row-actions">
         <button title="Télécharger le PDF" onclick="generateDevisPDF(${d.id})">⬇</button>
         ${pdfBtn}
+        <button title="Créer une facture depuis ce devis" onclick="createFactureFromDevis(${d.id})">🧾</button>
         <button onclick="openDevisDialog(${d.id})">✎</button>
         <button onclick="confirmDelete('devis', ${d.id}, renderDevis)">🗑</button>
       </td>
@@ -493,12 +511,25 @@ function openDevisDialog(id) {
   });
 }
 
-async function downloadSignedDevis(id) {
-  const d = findDevis(id);
-  if (!d || !d.pdf_path) { showToast("Aucun PDF joint"); return; }
-  const { data, error } = await sb.storage.from("devis-signes").createSignedUrl(d.pdf_path, 60);
+async function downloadAttachment(pdf_path) {
+  if (!pdf_path) { showToast("Aucun PDF joint"); return; }
+  const { data, error } = await sb.storage.from("devis-signes").createSignedUrl(pdf_path, 60);
   if (error) { showToast("PDF introuvable"); console.error(error); return; }
   window.open(data.signedUrl, "_blank");
+}
+async function downloadSignedDevis(id) {
+  const d = findDevis(id);
+  downloadAttachment(d && d.pdf_path);
+}
+
+// En-tête émetteur (coordonnées SAS CLF), en haut à droite des PDF
+function drawEmetteur(doc) {
+  doc.setFontSize(10);
+  const x = 200; // aligné à droite (page A4 = 210mm)
+  let y = 16;
+  const lines = [EMETTEUR.nom, EMETTEUR.adresse, EMETTEUR.siret, EMETTEUR.email, "Tél : " + EMETTEUR.telephone];
+  lines.forEach(l => { doc.text(l, x, y, { align: "right" }); y += 5; });
+  doc.setFontSize(11);
 }
 
 function generateDevisPDF(id) {
@@ -513,6 +544,7 @@ function generateDevisPDF(id) {
   const mtva = round2(ht * tva / 100);
   const ttc = d.montant_ttc != null ? Number(d.montant_ttc) : round2(ht + mtva);
 
+  drawEmetteur(doc);
   doc.setFontSize(20); doc.text("DEVIS", 20, 22);
   doc.setFontSize(11);
   doc.text("N° : " + (d.numero || "—"), 20, 34);
@@ -553,6 +585,207 @@ function generateDevisPDF(id) {
   if (d.notes) { y += 12; doc.setFontSize(10); doc.text(doc.splitTextToSize("Notes : " + d.notes, 170), 20, y); }
 
   doc.save((d.numero || "devis").replace(/\s+/g, "_") + ".pdf");
+}
+
+// ========================================================================
+//  FACTURATION  (liée aux devis et aux contacts)
+// ========================================================================
+function nextFactureNumero() {
+  let max = 0;
+  cache.factures.forEach(f => {
+    const m = (f.numero || "").match(/\d+/g);
+    if (m) { const n = parseInt(m[m.length - 1], 10); if (n > max) max = n; }
+  });
+  return "FAC " + String(max + 1).padStart(2, "0");
+}
+
+function renderFactures() {
+  ensureFilterOptions("facture-filter-statut", STATUTS_FACTURE);
+  const searchEl = document.getElementById("facture-search");
+  if (!searchEl.dataset.bound) { searchEl.addEventListener("input", renderFactures); searchEl.dataset.bound = "1"; }
+  const search = (searchEl.value || "").toLowerCase();
+  const filter = document.getElementById("facture-filter-statut").value;
+
+  let rows = [...cache.factures].sort((a, b) => (b.date_creation || "").localeCompare(a.date_creation || ""));
+  if (filter) rows = rows.filter(f => f.statut === filter);
+  if (search) rows = rows.filter(f => (contactLabel(findContact(f.contact_id)) + " " + (f.numero || "")).toLowerCase().includes(search));
+
+  const tbody = document.getElementById("facture-tbody");
+  tbody.innerHTML = rows.length ? rows.map(f => {
+    const dev = f.devis_id ? findDevis(f.devis_id) : null;
+    const pdfBtn = f.pdf_path ? `<button title="Voir le PDF joint" onclick="downloadAttachment(findFacture(${f.id}).pdf_path)">📎</button>` : "";
+    return `
+    <tr>
+      <td>${f.numero || "—"}</td>
+      <td>${contactLabel(findContact(f.contact_id))}</td>
+      <td>${dev ? (dev.numero || ("Devis #" + dev.id)) : "—"}</td>
+      <td>${fmtDateFR(f.date_facture)}</td>
+      <td>${f.montant_ttc ? f.montant_ttc + " €" : "—"}</td>
+      <td>${badge(f.statut, STATUT_COLORS[f.statut])}</td>
+      <td class="row-actions">
+        <button title="Télécharger la facture (PDF)" onclick="generateFacturePDF(${f.id})">⬇</button>
+        ${pdfBtn}
+        <button onclick="openFactureDialog(${f.id})">✎</button>
+        <button onclick="confirmDelete('factures', ${f.id}, renderFactures)">🗑</button>
+      </td>
+    </tr>`;
+  }).join("") : `<tr class="empty-row"><td colspan="7">Aucune facture — crée-la ici ou depuis un devis (bouton 🧾)</td></tr>`;
+}
+
+function factureFields(row) {
+  return [
+    { key: "numero", label: "Numéro", type: "text", value: row.numero != null ? row.numero : nextFactureNumero() },
+    { key: "contact_id", label: "Client / contact", type: "select-raw", optionsHtml: `<option value="">—</option>` + contactOptionsHtml(row.contact_id), value: row.contact_id, numeric: true },
+    { key: "devis_id", label: "Devis lié", type: "select-raw", optionsHtml: `<option value="">— Aucun —</option>` + devisOptionsHtml(row.devis_id), value: row.devis_id, numeric: true },
+    { key: "type_evenement", label: "Type d'évènement", type: "select", options: TYPES_EVENEMENT, value: row.type_evenement },
+    { key: "date_evenement", label: "Date de l'évènement", type: "date", value: row.date_evenement },
+    { key: "date_facture", label: "Date de la facture", type: "date", value: row.date_facture || todayStr() },
+    { key: "date_echeance", label: "Date d'échéance", type: "date", value: row.date_echeance },
+    { key: "montant_ht", label: "Montant HT (€)", type: "number", value: row.montant_ht },
+    { key: "tva", label: "TVA (%)", type: "select", options: TVA_RATES, value: row.tva != null ? row.tva : 20 },
+    { key: "montant_ttc", label: "Montant TTC (€) — calculé", type: "computed", value: row.montant_ttc },
+    { key: "montant_acompte", label: "Acompte déjà versé (€)", type: "number", value: row.montant_acompte },
+    { key: "statut", label: "Statut", type: "select", options: STATUTS_FACTURE, value: row.statut || "Brouillon" },
+    { key: "pdf_signe_file", label: "Joindre un PDF (facture signée / preuve)", type: "file", accept: "application/pdf" },
+    { key: "notes", label: "Notes", type: "textarea", value: row.notes },
+  ];
+}
+
+function factureOnRender(form) {
+  const calc = () => {
+    const ht = Number(form.elements["montant_ht"].value || 0);
+    const tva = Number(form.elements["tva"].value || 0);
+    form.elements["montant_ttc"].value = ht ? round2(ht * (1 + tva / 100)) : "";
+  };
+  form.elements["montant_ht"].addEventListener("input", calc);
+  form.elements["tva"].addEventListener("change", calc);
+  // Pré-remplissage automatique quand on choisit un devis
+  form.elements["devis_id"].addEventListener("change", () => {
+    const d = findDevis(Number(form.elements["devis_id"].value));
+    if (!d) return;
+    if (!form.elements["contact_id"].value && d.contact_id) form.elements["contact_id"].value = d.contact_id;
+    if (!form.elements["type_evenement"].value && d.type_evenement) form.elements["type_evenement"].value = d.type_evenement;
+    if (!form.elements["date_evenement"].value && d.date_evenement) form.elements["date_evenement"].value = d.date_evenement;
+    if (!form.elements["montant_ht"].value && d.montant_ht != null) form.elements["montant_ht"].value = d.montant_ht;
+    if (d.tva != null) form.elements["tva"].value = d.tva;
+    if (!form.elements["montant_acompte"].value && d.montant_acompte != null) form.elements["montant_acompte"].value = d.montant_acompte;
+    calc();
+  });
+  calc();
+}
+
+function openFactureDialog(id, prefill) {
+  const row = id ? (findFacture(id) || {}) : (prefill || {});
+  openModal({
+    title: id ? "Modifier la facture" : "Nouvelle facture",
+    table: "factures",
+    id: id,
+    fields: factureFields(row),
+    onRender: factureOnRender,
+    onSaved: refreshAll,
+  });
+}
+
+function createFactureFromDevis(devisId) {
+  const d = findDevis(devisId);
+  if (!d) return;
+  const ttc = d.montant_ttc != null ? d.montant_ttc
+    : round2(Number(d.montant_ht || 0) * (1 + Number(d.tva != null ? d.tva : 20) / 100));
+  openFactureDialog(null, {
+    devis_id: d.id,
+    contact_id: d.contact_id,
+    type_evenement: d.type_evenement,
+    date_evenement: d.date_evenement,
+    montant_ht: d.montant_ht,
+    tva: d.tva != null ? d.tva : 20,
+    montant_ttc: ttc,
+    montant_acompte: d.montant_acompte,
+    notes: d.notes,
+  });
+  showToast("Facture pré-remplie depuis " + (d.numero || "le devis"));
+}
+
+function generateFacturePDF(id) {
+  const f = findFacture(id);
+  if (!f) return;
+  if (!window.jspdf) { showToast("Générateur PDF indisponible (hors-ligne)"); return; }
+  const c = findContact(f.contact_id);
+  const dev = f.devis_id ? findDevis(f.devis_id) : null;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const ht = Number(f.montant_ht || 0);
+  const tva = Number(f.tva != null ? f.tva : 20);
+  const mtva = round2(ht * tva / 100);
+  const ttc = f.montant_ttc != null ? Number(f.montant_ttc) : round2(ht + mtva);
+  const acompte = Number(f.montant_acompte || 0);
+  const net = round2(ttc - acompte);
+
+  drawEmetteur(doc);
+  doc.setFontSize(20); doc.text("FACTURE", 20, 22);
+  doc.setFontSize(11);
+  doc.text("N° : " + (f.numero || "—"), 20, 34);
+  doc.text("Date : " + fmtDateFR(f.date_facture || todayStr()), 20, 41);
+  if (f.date_echeance) doc.text("Échéance : " + fmtDateFR(f.date_echeance), 20, 48);
+  if (dev) doc.text("Réf. devis : " + (dev.numero || ("#" + dev.id)), 20, 55);
+
+  doc.setFontSize(12); doc.text("Facturé à", 20, 68);
+  doc.setFontSize(11);
+  let y = 75;
+  [
+    contactLabel(c),
+    c && c.societe ? c.societe : "",
+    c && c.email ? c.email : "",
+    c && c.telephone ? c.telephone : "",
+    c && c.adresse ? c.adresse : "",
+  ].filter(Boolean).forEach(l => { doc.text(l, 20, y); y += 7; });
+
+  y += 6;
+  doc.setFontSize(12); doc.text("Détail", 20, y); y += 9;
+  doc.setFontSize(11);
+  const rows = [
+    ["Type d'évènement", f.type_evenement || "—"],
+    ["Date de l'évènement", fmtDateFR(f.date_evenement) || "—"],
+    ["Montant HT", ht ? ht.toFixed(2) + " €" : "—"],
+    ["TVA (" + tva + "%)", mtva.toFixed(2) + " €"],
+    ["Montant TTC", ttc.toFixed(2) + " €"],
+  ];
+  if (acompte) { rows.push(["Acompte déjà versé", "- " + acompte.toFixed(2) + " €"]); }
+  rows.forEach(([k, v]) => { doc.text(k, 20, y); doc.text(v, 130, y); y += 7; });
+
+  y += 6;
+  doc.setFontSize(13);
+  doc.text("NET À PAYER : " + net.toFixed(2) + " €", 20, y);
+  if (f.notes) { y += 12; doc.setFontSize(10); doc.text(doc.splitTextToSize("Notes : " + f.notes, 170), 20, y); }
+
+  doc.save((f.numero || "facture").replace(/\s+/g, "_") + ".pdf");
+}
+
+// ---- Historique par client : tous ses devis + factures ----
+function openContactHistory(contactId) {
+  const c = findContact(contactId);
+  const devs = cache.devis.filter(d => d.contact_id === contactId);
+  const facs = cache.factures.filter(f => f.contact_id === contactId);
+  const devHtml = devs.length ? devs.map(d => `
+    <tr>
+      <td>${d.numero || "—"}</td><td>${fmtDateFR(d.date_evenement)}</td>
+      <td>${d.montant_ttc ? d.montant_ttc + " €" : "—"}</td>
+      <td>${badge(d.statut, STATUT_COLORS[d.statut])}</td>
+      <td class="row-actions"><button onclick="generateDevisPDF(${d.id})">⬇</button></td>
+    </tr>`).join("") : `<tr class="empty-row"><td colspan="5">Aucun devis</td></tr>`;
+  const facHtml = facs.length ? facs.map(f => `
+    <tr>
+      <td>${f.numero || "—"}</td><td>${fmtDateFR(f.date_facture)}</td>
+      <td>${f.montant_ttc ? f.montant_ttc + " €" : "—"}</td>
+      <td>${badge(f.statut, STATUT_COLORS[f.statut])}</td>
+      <td class="row-actions"><button onclick="generateFacturePDF(${f.id})">⬇</button></td>
+    </tr>`).join("") : `<tr class="empty-row"><td colspan="5">Aucune facture</td></tr>`;
+  const html = `
+    <p style="margin:0 0 14px;color:var(--muted);font-size:13px;">Contact : <strong>${contactLabel(c)}</strong></p>
+    <h3 style="font-size:14px;margin:0 0 8px;">📄 Devis</h3>
+    <table class="data" style="margin-bottom:18px;"><thead><tr><th>N°</th><th>Date évt</th><th>TTC</th><th>Statut</th><th></th></tr></thead><tbody>${devHtml}</tbody></table>
+    <h3 style="font-size:14px;margin:0 0 8px;">🧾 Factures</h3>
+    <table class="data"><thead><tr><th>N°</th><th>Date</th><th>TTC</th><th>Statut</th><th></th></tr></thead><tbody>${facHtml}</tbody></table>`;
+  showInfoModal("Historique client", html);
 }
 
 // ========================================================================
@@ -633,6 +866,7 @@ function renderContacts() {
       <td>${c.telephone || "—"}</td>
       <td>${badge(c.categorie, STATUT_COLORS[c.categorie]) || (c.type_evenement_interet || "—")}</td>
       <td class="row-actions">
+        <button title="Historique devis / factures" onclick="openContactHistory(${c.id})">📁</button>
         <button onclick="openContactDialog(${c.id})">✎</button>
         <button onclick="confirmDelete('contacts', ${c.id}, renderContacts)">🗑</button>
       </td>
@@ -888,9 +1122,22 @@ function openModal({ title, table, id, fields, onSaved, onRender, beforeSave }) 
     }
     return `<div class="field"><label>${f.label}${f.required ? " *" : ""}</label>${input}</div>`;
   }).join("");
+  document.getElementById("modal-save").style.display = "inline-block";
+  document.getElementById("modal-cancel").textContent = "Annuler";
   document.getElementById("modal-delete").style.display = id ? "inline-block" : "none";
   document.getElementById("modal-overlay").classList.add("open");
   if (onRender) onRender(form);
+}
+
+// Fenêtre en lecture seule (ex : historique client)
+function showInfoModal(title, html) {
+  modalContext = null;
+  document.getElementById("modal-title").textContent = title;
+  document.getElementById("modal-form").innerHTML = html;
+  document.getElementById("modal-save").style.display = "none";
+  document.getElementById("modal-delete").style.display = "none";
+  document.getElementById("modal-cancel").textContent = "Fermer";
+  document.getElementById("modal-overlay").classList.add("open");
 }
 
 function closeModal() {
@@ -972,6 +1219,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Raccourcis (toolbar)
   document.getElementById("sc-devis").addEventListener("click", () => openDevisDialog(null));
+  document.getElementById("sc-facture").addEventListener("click", () => openFactureDialog(null));
   document.getElementById("sc-contact").addEventListener("click", () => openContactDialog(null));
   document.getElementById("sc-evenement").addEventListener("click", () => openEvenementDialog(null));
   document.getElementById("sc-rdv").addEventListener("click", () => openRdvDialog(null));
@@ -981,6 +1229,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-new-todo").addEventListener("click", () => openTodoDialog(null));
   document.getElementById("btn-new-prospect").addEventListener("click", () => openProspectDialog(null));
   document.getElementById("btn-new-devis").addEventListener("click", () => openDevisDialog(null));
+  document.getElementById("btn-new-facture").addEventListener("click", () => openFactureDialog(null));
   document.getElementById("btn-new-grille").addEventListener("click", () => openGrilleDialog(null));
   document.getElementById("btn-new-contact").addEventListener("click", () => openContactDialog(null));
   document.getElementById("btn-new-evenement").addEventListener("click", () => openEvenementDialog(null));
