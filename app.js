@@ -135,12 +135,12 @@ async function insertRow(table, values) {
   values.user_id = currentUser.id;
   values.date_creation = values.date_creation || nowStr();
   const { data, error } = await sb.from(table).insert(values).select().single();
-  if (error) { showToast("Erreur enregistrement"); console.error(error); return null; }
+  if (error) { showToast("Échec enregistrement : " + (error.message || error.hint || "erreur inconnue")); console.error(error); return null; }
   return data;
 }
 async function updateRow(table, id, values) {
   const { data, error } = await sb.from(table).update(values).eq("id", id).select().single();
-  if (error) { showToast("Erreur mise à jour"); console.error(error); return null; }
+  if (error) { showToast("Échec mise à jour : " + (error.message || error.hint || "erreur inconnue")); console.error(error); return null; }
   return data;
 }
 async function deleteRow(table, id) {
@@ -1337,17 +1337,18 @@ async function saveModal() {
   if (id) saved = await updateRow(table, id, values);
   else saved = await insertRow(table, values);
 
-  // Après une création, on enlève les filtres actifs pour que le nouvel élément soit visible
-  if (!id && saved) clearTableFilters(table);
+  // Échec : l'erreur réelle a déjà été affichée ; on garde le formulaire ouvert.
+  if (!saved) return;
 
-  if (saved) {
-    for (const { f, el } of fileFields) {
-      if (el && el.files && el.files[0]) {
-        const path = `${currentUser.id}/${table}-${saved.id}.pdf`;
-        const { error } = await sb.storage.from("devis-signes").upload(path, el.files[0], { upsert: true, contentType: "application/pdf" });
-        if (error) { showToast("Erreur envoi PDF"); console.error(error); }
-        else await updateRow(table, saved.id, { pdf_path: path });
-      }
+  // Après une création, on enlève les filtres actifs pour que le nouvel élément soit visible
+  if (!id) clearTableFilters(table);
+
+  for (const { f, el } of fileFields) {
+    if (el && el.files && el.files[0]) {
+      const path = `${currentUser.id}/${table}-${saved.id}.pdf`;
+      const { error } = await sb.storage.from("devis-signes").upload(path, el.files[0], { upsert: true, contentType: "application/pdf" });
+      if (error) { showToast("Erreur envoi PDF"); console.error(error); }
+      else await updateRow(table, saved.id, { pdf_path: path });
     }
   }
   showToast(id ? "Modifications enregistrées" : "Ajouté avec succès");
