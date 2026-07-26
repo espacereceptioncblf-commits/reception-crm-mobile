@@ -10,39 +10,18 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Détecte le clic sur le lien de réinitialisation reçu par email : Supabase
-// authentifie temporairement l'utilisateur et déclenche cet évènement pour
-// qu'il puisse choisir un nouveau mot de passe.
-sb.auth.onAuthStateChange((event) => {
-  if (event === "PASSWORD_RECOVERY") {
-    document.getElementById("app-screen").style.display = "none";
-    document.getElementById("auth-screen").style.display = "flex";
-    setAuthMode("reset");
-  }
-});
-
-// ---- 2) CONSTANTES (identiques à reception_crm.py) ----
+// ---- 2) CONSTANTES ----
 const TYPES_EVENEMENT = ["Mariage", "Anniversaire", "Baptême", "Séminaire", "Autre"];
 const STATUTS_PROSPECT = ["Nouveau", "Contacté", "Qualifié", "Devis envoyé", "Converti", "Perdu"];
 const STATUTS_DEVIS = ["Brouillon", "Envoyé", "Accepté", "Refusé", "Expiré"];
 const STATUTS_EVENEMENT = ["Option", "Confirmé", "Terminé", "Annulé"];
 const STATUTS_TODO = ["À faire", "En cours", "Terminé"];
+const STATUTS_RDV = ["Prévu", "Confirmé", "Effectué", "Annulé"];
 const PRIORITES = ["Basse", "Normale", "Haute", "Urgente"];
 const SOURCES_PROSPECT = ["Site web", "Téléphone", "Bouche à oreille", "Réseaux sociaux", "Salon", "Recommandation", "Autre"];
-const STATUTS_FACTURE = ["Impayée", "Payée", "En retard"];
-
-// Coordonnées affichées en en-tête des factures imprimées / PDF.
-// À compléter avec tes informations (nom commercial, adresse, SIRET,
-// n° TVA intracommunautaire si applicable...). Vérifie auprès de ton
-// comptable les mentions légales obligatoires sur une facture en France.
-const ENTREPRISE = {
-  nom: "SAS CLF",
-  adresse: "5580 route de Grisolles, 31620 Fronton",
-  siret: "94489133200016",
-  tva: "",
-  email: "espacereceptioncblf@gmail.com",
-  telephone: "07 43 01 54 64",
-};
+const CATEGORIES_CONTACT = ["Client", "Prospect", "Partenaire", "Fournisseur", "Traiteur"];
+const FORMULES = ["Clef en main", "Location salle"];
+const TVA_RATES = [0, 5.5, 8, 10, 20];
 
 const STATUT_COLORS = {
   "Nouveau": "var(--info)", "Contacté": "var(--warning)", "Qualifié": "var(--accent)",
@@ -51,20 +30,20 @@ const STATUT_COLORS = {
   "Refusé": "var(--danger)", "Expiré": "var(--muted)",
   "Option": "var(--warning)", "Confirmé": "var(--success)", "Terminé": "var(--muted)", "Annulé": "var(--danger)",
   "À faire": "var(--info)", "En cours": "var(--warning)",
-  "Impayée": "var(--warning)", "Payée": "var(--success)", "En retard": "var(--danger)",
+  "Prévu": "var(--info)", "Effectué": "var(--success)",
+  "Client": "var(--success)", "Prospect": "var(--info)", "Partenaire": "var(--accent)",
+  "Fournisseur": "var(--warning)", "Traiteur": "var(--warning)",
 };
 
-// ---- 3) ETAT LOCAL (cache en mémoire, resynchronisé à chaque page) ----
+// ---- 3) ETAT LOCAL ----
 let currentUser = null;
-let cache = { contacts: [], prospects: [], devis: [], evenements: [], todos: [], factures: [] };
+let cache = { contacts: [], prospects: [], devis: [], evenements: [], todos: [], grille_tarifaire: [], rdv: [] };
 let currentPage = "dashboard";
-let modalContext = null; // { table, id, onSaved }
+let modalContext = null; // { table, id, fields, onSaved, onRender, beforeSave }
 let calState = { year: new Date().getFullYear(), month: new Date().getMonth() + 1, selected: null };
 
 // ---- 4) HELPERS ----
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
-}
+function todayStr() { return new Date().toISOString().slice(0, 10); }
 function nowStr() {
   const d = new Date();
   return d.toISOString().slice(0, 16).replace("T", " ");
@@ -75,6 +54,7 @@ function fmtDateFR(iso) {
   if (!y || !m || !d) return iso;
   return `${d}/${m}/${y}`;
 }
+function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 function showToast(msg) {
   const t = document.getElementById("toast");
   t.textContent = msg;
@@ -91,11 +71,7 @@ function contactLabel(c) {
 }
 function findContact(id) { return cache.contacts.find(c => c.id === id); }
 function findDevis(id) { return cache.devis.find(d => d.id === id); }
-function findFacture(id) { return cache.factures.find(f => f.id === id); }
-function escapeHtml(s) {
-  if (s == null) return "";
-  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
+function findEvenement(id) { return cache.evenements.find(e => e.id === id); }
 
 // ---- 5) SUPABASE CRUD GENERIQUE ----
 async function fetchAll(table, orderCol = "id", ascending = false) {
@@ -121,15 +97,16 @@ async function deleteRow(table, id) {
   return true;
 }
 async function refreshCache() {
-  const [contacts, prospects, devisRows, evenements, todos, factures] = await Promise.all([
+  const [contacts, prospects, devisRows, evenements, todos, grille, rdv] = await Promise.all([
     fetchAll("contacts", "nom", true),
     fetchAll("prospects"),
     fetchAll("devis"),
     fetchAll("evenements"),
     fetchAll("todos"),
-    fetchAll("factures"),
+    fetchAll("grille_tarifaire", "nom_presta", true),
+    fetchAll("rdv"),
   ]);
-  cache = { contacts, prospects, devis: devisRows, evenements, todos, factures };
+  cache = { contacts, prospects, devis: devisRows, evenements, todos, grille_tarifaire: grille, rdv };
 }
 
 // ========================================================================
@@ -144,50 +121,19 @@ function setAuthMode(mode) {
   const submit = document.getElementById("auth-submit");
   const switchText = document.getElementById("auth-switch-text");
   const switchLink = document.getElementById("auth-switch-link");
-  const switchRow = document.getElementById("auth-switch");
-  const emailEl = document.getElementById("auth-email");
-  const passEl = document.getElementById("auth-password");
-  const passConfirmEl = document.getElementById("auth-password-confirm");
-  const forgotRow = document.getElementById("auth-forgot-row");
   document.getElementById("auth-error").style.display = "none";
-
-  // Valeurs par défaut, chaque mode ajuste ce qu'il faut en plus
-  emailEl.style.display = "block";
-  passEl.style.display = "block";
-  passConfirmEl.style.display = "none";
-  forgotRow.style.display = "none";
-  switchRow.style.display = "block";
-
   if (mode === "login") {
     title.textContent = "Connexion";
-    sub.textContent = "CRM Espace Réception CBLF — accède à ton compte";
+    sub.textContent = "Gestion Réception — accède à ton compte";
     submit.textContent = "Se connecter";
     switchText.textContent = "Pas encore de compte ?";
     switchLink.textContent = "Créer un compte";
-    passEl.placeholder = "Mot de passe";
-    forgotRow.style.display = "block";
-  } else if (mode === "signup") {
+  } else {
     title.textContent = "Créer un compte";
-    sub.textContent = "CRM Espace Réception CBLF — synchronise tes données";
+    sub.textContent = "Gestion Réception — synchronise tes données";
     submit.textContent = "Créer mon compte";
     switchText.textContent = "Déjà un compte ?";
     switchLink.textContent = "Se connecter";
-    passEl.placeholder = "Mot de passe";
-  } else if (mode === "forgot") {
-    title.textContent = "Mot de passe oublié";
-    sub.textContent = "Reçois un lien par email pour le réinitialiser";
-    submit.textContent = "Envoyer le lien";
-    passEl.style.display = "none";
-    switchText.textContent = "";
-    switchLink.textContent = "Retour à la connexion";
-  } else if (mode === "reset") {
-    title.textContent = "Nouveau mot de passe";
-    sub.textContent = "Choisis un nouveau mot de passe pour ton compte";
-    submit.textContent = "Enregistrer le nouveau mot de passe";
-    emailEl.style.display = "none";
-    passEl.placeholder = "Nouveau mot de passe";
-    passConfirmEl.style.display = "block";
-    switchRow.style.display = "none";
   }
 }
 
@@ -200,31 +146,6 @@ function authError(msg) {
 async function handleAuthSubmit() {
   const email = document.getElementById("auth-email").value.trim();
   const password = document.getElementById("auth-password").value;
-  const passwordConfirm = document.getElementById("auth-password-confirm").value;
-
-  if (authMode === "forgot") {
-    if (!email) { authError("Renseigne ton adresse email."); return; }
-    const { error } = await sb.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + window.location.pathname,
-    });
-    if (error) { authError(error.message); return; }
-    showToast("Email envoyé — vérifie ta boîte de réception.");
-    setAuthMode("login");
-    return;
-  }
-
-  if (authMode === "reset") {
-    if (!password || password.length < 6) { authError("Le mot de passe doit contenir au moins 6 caractères."); return; }
-    if (password !== passwordConfirm) { authError("Les deux mots de passe ne correspondent pas."); return; }
-    const { error } = await sb.auth.updateUser({ password });
-    if (error) { authError(error.message); return; }
-    showToast("Mot de passe mis à jour !");
-    const { data } = await sb.auth.getSession();
-    if (data.session) onLoggedIn(data.session.user);
-    else setAuthMode("login");
-    return;
-  }
-
   if (!email || !password) { authError("Renseigne un email et un mot de passe."); return; }
 
   if (authMode === "login") {
@@ -280,9 +201,10 @@ function renderPage(key) {
   else if (key === "todo") renderTodo();
   else if (key === "prospects") renderProspects();
   else if (key === "devis") renderDevis();
-  else if (key === "facturation") renderFacturation();
+  else if (key === "grille") renderGrille();
   else if (key === "contacts") renderContacts();
   else if (key === "evenements") renderEvenements();
+  else if (key === "rdv") renderRdv();
   else if (key === "calendrier") renderCalendrier();
 }
 
@@ -300,14 +222,14 @@ function renderDashboard() {
   const prospectsActifs = cache.prospects.filter(p => !["Converti", "Perdu"].includes(p.statut)).length;
   const devisEnAttente = cache.devis.filter(d => d.statut === "Envoyé").length;
   const evenementsAvenir = cache.evenements.filter(e => e.date_evenement >= today).length;
+  const rdvAvenir = cache.rdv.filter(r => (r.date_rdv || "") >= today && r.statut !== "Annulé").length;
   const todosOuvertes = cache.todos.filter(t => t.statut !== "Terminé").length;
-  const facturesImpayees = cache.factures.filter(f => f.statut !== "Payée").length;
 
   const cardsHtml = [
     ["👤", nbContacts, "Contacts"],
     ["🎯", prospectsActifs, "Prospects actifs"],
     ["📄", devisEnAttente, "Devis en attente"],
-    ["💶", facturesImpayees, "Factures impayées"],
+    ["🤝", rdvAvenir, "RDV à venir"],
     ["🎉", evenementsAvenir, "Évènements à venir"],
     ["✅", todosOuvertes, "Tâches en cours"],
   ].map(([icon, num, label]) => `
@@ -318,11 +240,40 @@ function renderDashboard() {
     </div>`).join("");
   document.getElementById("dash-cards").innerHTML = cardsHtml;
 
+  // RDV à venir (triés par date + heure)
+  const rdvRows = cache.rdv
+    .filter(r => (r.date_rdv || "") >= today && r.statut !== "Annulé")
+    .sort((a, b) => ((a.date_rdv || "") + (a.heure || "")).localeCompare((b.date_rdv || "") + (b.heure || "")))
+    .slice(0, 8);
+  document.getElementById("dash-rdv").innerHTML = rdvRows.length ? rdvRows.map(r => `
+    <tr onclick="openRdvDialog(${r.id})" style="cursor:pointer;">
+      <td>${fmtDateFR(r.date_rdv)}</td>
+      <td>${r.heure || "—"}</td>
+      <td>${r.objet || "—"}</td>
+      <td>${contactLabel(findContact(r.contact_id))}</td>
+      <td>${badge(r.statut, STATUT_COLORS[r.statut])}</td>
+    </tr>`).join("") : `<tr class="empty-row"><td colspan="5">Aucun RDV à venir</td></tr>`;
+
+  // Évènements à venir
+  const evRows = cache.evenements
+    .filter(e => (e.date_evenement || "") >= today)
+    .sort((a, b) => (a.date_evenement || "").localeCompare(b.date_evenement || ""))
+    .slice(0, 8);
+  document.getElementById("dash-events").innerHTML = evRows.length ? evRows.map(e => `
+    <tr onclick="openEvenementDialog(${e.id})" style="cursor:pointer;">
+      <td>${fmtDateFR(e.date_evenement)}</td>
+      <td>${e.titre || "—"}</td>
+      <td>${e.type_evenement || "—"}</td>
+      <td>${e.nb_invites ?? "—"}</td>
+      <td>${badge(e.statut, STATUT_COLORS[e.statut])}</td>
+    </tr>`).join("") : `<tr class="empty-row"><td colspan="5">Aucun évènement à venir</td></tr>`;
+
+  // Activité récente (dernières actions manuelles)
   const activity = [];
   cache.contacts.forEach(c => activity.push({ date: c.date_creation || "", type: "Contact", detail: contactLabel(c) }));
   cache.evenements.forEach(e => activity.push({ date: e.date_creation || "", type: "Évènement", detail: e.titre || "" }));
   cache.devis.forEach(d => activity.push({ date: d.date_creation || "", type: "Devis", detail: d.numero || "" }));
-  cache.factures.forEach(f => activity.push({ date: f.date_creation || "", type: "Facture", detail: f.numero || "" }));
+  cache.rdv.forEach(r => activity.push({ date: r.date_creation || "", type: "RDV", detail: r.objet || "" }));
   cache.todos.forEach(t => activity.push({ date: t.date_creation || "", type: "Tâche", detail: t.titre || "" }));
   activity.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
@@ -334,18 +285,26 @@ function renderDashboard() {
 }
 
 // ========================================================================
-//  TODO
+//  FILTRES
 // ========================================================================
 function ensureFilterOptions(selectId, options) {
   const sel = document.getElementById(selectId);
   if (sel.dataset.filled) return;
   options.forEach(o => {
     const opt = document.createElement("option");
-    opt.value = o; opt.textContent = o;
+    opt.value = o.value !== undefined ? o.value : o;
+    opt.textContent = o.label !== undefined ? o.label : o;
     sel.appendChild(opt);
   });
   sel.dataset.filled = "1";
   sel.addEventListener("change", () => renderPage(currentPage));
+}
+
+// ========================================================================
+//  TODO
+// ========================================================================
+function evenementOptionsHtml(selectedId) {
+  return cache.evenements.map(e => `<option value="${e.id}" ${e.id === selectedId ? "selected" : ""}>${e.titre || ("Évènement #" + e.id)}</option>`).join("");
 }
 
 function renderTodo() {
@@ -355,10 +314,13 @@ function renderTodo() {
   if (filter) rows = rows.filter(t => t.statut === filter);
 
   const tbody = document.getElementById("todo-tbody");
-  tbody.innerHTML = rows.length ? rows.map(t => `
+  tbody.innerHTML = rows.length ? rows.map(t => {
+    const ev = t.evenement_id ? findEvenement(t.evenement_id) : null;
+    const cat = ev ? (ev.titre || "Évènement") : (t.categorie || "—");
+    return `
     <tr>
       <td>${t.titre}</td>
-      <td>${t.categorie || "—"}</td>
+      <td>${cat}</td>
       <td>${badge(t.priorite, t.priorite === "Urgente" ? "var(--danger)" : t.priorite === "Haute" ? "var(--warning)" : "var(--muted)")}</td>
       <td>${fmtDateFR(t.date_echeance)}</td>
       <td>${badge(t.statut, STATUT_COLORS[t.statut])}</td>
@@ -366,7 +328,8 @@ function renderTodo() {
         <button onclick="openTodoDialog(${t.id})">✎</button>
         <button onclick="confirmDelete('todos', ${t.id}, renderTodo)">🗑</button>
       </td>
-    </tr>`).join("") : `<tr class="empty-row"><td colspan="6">Aucune tâche</td></tr>`;
+    </tr>`;
+  }).join("") : `<tr class="empty-row"><td colspan="6">Aucune tâche</td></tr>`;
 }
 
 function openTodoDialog(id) {
@@ -378,7 +341,8 @@ function openTodoDialog(id) {
     fields: [
       { key: "titre", label: "Titre", type: "text", required: true, value: row.titre },
       { key: "description", label: "Description", type: "textarea", value: row.description },
-      { key: "categorie", label: "Catégorie", type: "text", value: row.categorie },
+      { key: "evenement_id", label: "Évènement lié", type: "select-raw", optionsHtml: `<option value="">— Aucun —</option>` + evenementOptionsHtml(row.evenement_id), value: row.evenement_id, numeric: true },
+      { key: "categorie", label: "Catégorie (si pas d'évènement)", type: "text", value: row.categorie },
       { key: "priorite", label: "Priorité", type: "select", options: PRIORITES, value: row.priorite || "Normale" },
       { key: "statut", label: "Statut", type: "select", options: STATUTS_TODO, value: row.statut || "À faire" },
       { key: "date_echeance", label: "Échéance", type: "date", value: row.date_echeance },
@@ -392,6 +356,9 @@ function openTodoDialog(id) {
 // ========================================================================
 function contactOptionsHtml(selectedId) {
   return cache.contacts.map(c => `<option value="${c.id}" ${c.id === selectedId ? "selected" : ""}>${contactLabel(c)}</option>`).join("");
+}
+function devisOptionsHtml(selectedId) {
+  return cache.devis.map(d => `<option value="${d.id}" ${d.id === selectedId ? "selected" : ""}>${d.numero || ("Devis #" + d.id)}</option>`).join("");
 }
 
 function renderProspects() {
@@ -425,10 +392,13 @@ function openProspectDialog(id) {
     fields: [
       { key: "contact_id", label: "Contact", type: "select-raw", optionsHtml: `<option value="">—</option>` + contactOptionsHtml(row.contact_id), value: row.contact_id, numeric: true },
       { key: "statut", label: "Statut", type: "select", options: STATUTS_PROSPECT, value: row.statut || "Nouveau" },
-      { key: "source", label: "Source", type: "select", options: SOURCES_PROSPECT, value: row.source },
+      { key: "source", label: "Source / provenance", type: "select", options: SOURCES_PROSPECT, value: row.source },
+      { key: "type_evenement", label: "Type d'évènement", type: "select", options: TYPES_EVENEMENT, value: row.type_evenement },
       { key: "budget_estime", label: "Budget estimé (€)", type: "number", value: row.budget_estime },
       { key: "date_evenement_souhaite", label: "Date évènement souhaitée", type: "date", value: row.date_evenement_souhaite },
+      { key: "date_rdv_prealable", label: "Date du RDV préalable", type: "date", value: row.date_rdv_prealable },
       { key: "prochaine_relance", label: "Prochaine relance", type: "date", value: row.prochaine_relance },
+      { key: "devis_id", label: "Devis lié", type: "select-raw", optionsHtml: `<option value="">— Aucun —</option>` + devisOptionsHtml(row.devis_id), value: row.devis_id, numeric: true },
       { key: "notes", label: "Notes", type: "textarea", value: row.notes },
     ],
     onSaved: refreshAll,
@@ -438,26 +408,51 @@ function openProspectDialog(id) {
 // ========================================================================
 //  DEVIS
 // ========================================================================
+function nextDevisNumero() {
+  let max = 0;
+  cache.devis.forEach(d => {
+    const m = (d.numero || "").match(/\d+/g);
+    if (m) { const n = parseInt(m[m.length - 1], 10); if (n > max) max = n; }
+  });
+  return "Devis " + String(max + 1).padStart(2, "0");
+}
+
 function renderDevis() {
   ensureFilterOptions("devis-filter-statut", STATUTS_DEVIS);
+  const searchEl = document.getElementById("devis-search");
+  if (!searchEl.dataset.bound) { searchEl.addEventListener("input", renderDevis); searchEl.dataset.bound = "1"; }
+  const search = (searchEl.value || "").toLowerCase();
   const filter = document.getElementById("devis-filter-statut").value;
-  let rows = [...cache.devis].sort((a, b) => (b.date_creation || "").localeCompare(a.date_creation || ""));
+
+  let rows = [...cache.devis].sort((a, b) => {
+    // signés d'abord, puis date de création décroissante
+    if (!!b.signe !== !!a.signe) return b.signe ? 1 : -1;
+    return (b.date_creation || "").localeCompare(a.date_creation || "");
+  });
   if (filter) rows = rows.filter(d => d.statut === filter);
+  if (search) rows = rows.filter(d => (contactLabel(findContact(d.contact_id)) + " " + (d.numero || "")).toLowerCase().includes(search));
 
   const tbody = document.getElementById("devis-tbody");
-  tbody.innerHTML = rows.length ? rows.map(d => `
+  tbody.innerHTML = rows.length ? rows.map(d => {
+    const acompte = d.acompte ? (d.montant_acompte ? d.montant_acompte + " €" : "Oui") : "—";
+    const pdfBtn = d.pdf_path ? `<button title="Voir le devis signé" onclick="downloadSignedDevis(${d.id})">📎</button>` : "";
+    return `
     <tr>
-      <td>${d.numero || "—"}</td>
+      <td>${d.numero || "—"}${d.signe ? " ✅" : ""}</td>
       <td>${contactLabel(findContact(d.contact_id))}</td>
       <td>${d.type_evenement || "—"}</td>
       <td>${fmtDateFR(d.date_evenement)}</td>
       <td>${d.montant_ttc ? d.montant_ttc + " €" : "—"}</td>
+      <td>${acompte}</td>
       <td>${badge(d.statut, STATUT_COLORS[d.statut])}</td>
       <td class="row-actions">
+        <button title="Télécharger le PDF" onclick="generateDevisPDF(${d.id})">⬇</button>
+        ${pdfBtn}
         <button onclick="openDevisDialog(${d.id})">✎</button>
         <button onclick="confirmDelete('devis', ${d.id}, renderDevis)">🗑</button>
       </td>
-    </tr>`).join("") : `<tr class="empty-row"><td colspan="7">Aucun devis</td></tr>`;
+    </tr>`;
+  }).join("") : `<tr class="empty-row"><td colspan="8">Aucun devis</td></tr>`;
 }
 
 function openDevisDialog(id) {
@@ -467,185 +462,153 @@ function openDevisDialog(id) {
     table: "devis",
     id: id,
     fields: [
-      { key: "numero", label: "Numéro", type: "text", value: row.numero },
+      { key: "numero", label: "Numéro", type: "text", value: row.numero != null ? row.numero : nextDevisNumero() },
       { key: "contact_id", label: "Contact", type: "select-raw", optionsHtml: `<option value="">—</option>` + contactOptionsHtml(row.contact_id), value: row.contact_id, numeric: true },
       { key: "type_evenement", label: "Type d'évènement", type: "select", options: TYPES_EVENEMENT, value: row.type_evenement },
       { key: "date_evenement", label: "Date évènement", type: "date", value: row.date_evenement },
       { key: "nb_invites", label: "Nombre d'invités", type: "number", value: row.nb_invites },
       { key: "montant_ht", label: "Montant HT (€)", type: "number", value: row.montant_ht },
-      { key: "montant_ttc", label: "Montant TTC (€)", type: "number", value: row.montant_ttc },
+      { key: "tva", label: "TVA (%)", type: "select", options: TVA_RATES, value: row.tva != null ? row.tva : 20 },
+      { key: "montant_ttc", label: "Montant TTC (€) — calculé", type: "computed", value: row.montant_ttc },
+      { key: "acompte", label: "Acompte demandé ?", type: "checkbox", value: row.acompte },
+      { key: "montant_acompte", label: "Montant acompte (€)", type: "number", value: row.montant_acompte },
       { key: "statut", label: "Statut", type: "select", options: STATUTS_DEVIS, value: row.statut || "Brouillon" },
+      { key: "signe", label: "Devis signé", type: "checkbox", value: row.signe },
+      { key: "parent_devis_id", label: "Version précédente (si révision)", type: "select-raw", optionsHtml: `<option value="">— Aucune —</option>` + devisOptionsHtml(row.parent_devis_id), value: row.parent_devis_id, numeric: true },
       { key: "date_validite", label: "Date de validité", type: "date", value: row.date_validite },
+      { key: "pdf_signe_file", label: "Joindre le devis signé (PDF)", type: "file", accept: "application/pdf" },
       { key: "notes", label: "Notes", type: "textarea", value: row.notes },
     ],
+    onRender: (form) => {
+      const calc = () => {
+        const ht = Number(form.elements["montant_ht"].value || 0);
+        const tva = Number(form.elements["tva"].value || 0);
+        form.elements["montant_ttc"].value = ht ? round2(ht * (1 + tva / 100)) : "";
+      };
+      form.elements["montant_ht"].addEventListener("input", calc);
+      form.elements["tva"].addEventListener("change", calc);
+      calc();
+    },
     onSaved: refreshAll,
   });
 }
 
-// ========================================================================
-//  FACTURATION
-// ========================================================================
-function nextFactureNumero() {
-  const year = new Date().getFullYear();
-  const prefix = `FAC-${year}-`;
-  const nums = cache.factures
-    .filter(f => (f.numero || "").startsWith(prefix))
-    .map(f => parseInt((f.numero || "").slice(prefix.length), 10) || 0);
-  const next = (nums.length ? Math.max(...nums) : 0) + 1;
-  return prefix + String(next).padStart(3, "0");
+async function downloadSignedDevis(id) {
+  const d = findDevis(id);
+  if (!d || !d.pdf_path) { showToast("Aucun PDF joint"); return; }
+  const { data, error } = await sb.storage.from("devis-signes").createSignedUrl(d.pdf_path, 60);
+  if (error) { showToast("PDF introuvable"); console.error(error); return; }
+  window.open(data.signedUrl, "_blank");
 }
 
-// Devis acceptés qui n'ont pas encore de facture liée
-function devisAFacturerOptionsHtml() {
-  const facturedIds = new Set(cache.factures.map(f => f.devis_id).filter(Boolean));
-  return cache.devis
-    .filter(d => d.statut === "Accepté" && !facturedIds.has(d.id))
-    .map(d => `<option value="${d.id}">${d.numero || ("Devis #" + d.id)} — ${contactLabel(findContact(d.contact_id))}</option>`)
-    .join("");
-}
+function generateDevisPDF(id) {
+  const d = findDevis(id);
+  if (!d) return;
+  if (!window.jspdf) { showToast("Générateur PDF indisponible (hors-ligne)"); return; }
+  const c = findContact(d.contact_id);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const ht = Number(d.montant_ht || 0);
+  const tva = Number(d.tva != null ? d.tva : 20);
+  const mtva = round2(ht * tva / 100);
+  const ttc = d.montant_ttc != null ? Number(d.montant_ttc) : round2(ht + mtva);
 
-function renderFacturation() {
-  ensureFilterOptions("facture-filter-statut", STATUTS_FACTURE);
-  const filter = document.getElementById("facture-filter-statut").value;
-  const today = todayStr();
+  doc.setFontSize(20); doc.text("DEVIS", 20, 22);
+  doc.setFontSize(11);
+  doc.text("N° : " + (d.numero || "—"), 20, 34);
+  doc.text("Date : " + fmtDateFR(d.date_creation ? d.date_creation.slice(0, 10) : todayStr()), 20, 41);
+  if (d.date_validite) doc.text("Valable jusqu'au : " + fmtDateFR(d.date_validite), 20, 48);
 
-  const sourceSel = document.getElementById("facture-source-devis");
-  const currentSourceVal = sourceSel.value;
-  sourceSel.innerHTML = `<option value="">Choisir un devis accepté…</option>` + devisAFacturerOptionsHtml();
-  if ([...sourceSel.options].some(o => o.value === currentSourceVal)) sourceSel.value = currentSourceVal;
+  doc.setFontSize(12); doc.text("Client", 20, 62);
+  doc.setFontSize(11);
+  let y = 69;
+  const lines = [
+    contactLabel(c),
+    c && c.societe ? c.societe : "",
+    c && c.email ? c.email : "",
+    c && c.telephone ? c.telephone : "",
+    c && c.adresse ? c.adresse : "",
+  ].filter(Boolean);
+  lines.forEach(l => { doc.text(l, 20, y); y += 7; });
 
-  const displayStatut = f => (f.statut === "Impayée" && f.date_echeance && f.date_echeance < today) ? "En retard" : f.statut;
-
-  let rows = [...cache.factures].sort((a, b) => (b.date_facture || "").localeCompare(a.date_facture || ""));
-  if (filter) rows = rows.filter(f => displayStatut(f) === filter);
-
-  const tbody = document.getElementById("facture-tbody");
-  tbody.innerHTML = rows.length ? rows.map(f => `
-    <tr>
-      <td>${f.numero || "—"}</td>
-      <td>${contactLabel(findContact(f.contact_id))}</td>
-      <td>${fmtDateFR(f.date_facture)}</td>
-      <td>${fmtDateFR(f.date_echeance)}</td>
-      <td>${f.montant_ttc != null ? f.montant_ttc + " €" : "—"}</td>
-      <td>${badge(displayStatut(f), STATUT_COLORS[displayStatut(f)])}</td>
-      <td class="row-actions">
-        <button onclick="printFacture(${f.id})" title="Imprimer / PDF">🖨</button>
-        <button onclick="openFactureDialog(${f.id})">✎</button>
-        <button onclick="confirmDelete('factures', ${f.id}, renderFacturation)">🗑</button>
-      </td>
-    </tr>`).join("") : `<tr class="empty-row"><td colspan="7">Aucune facture — génère-en une depuis un devis accepté</td></tr>`;
-}
-
-function facturationFieldSet(row) {
-  return [
-    { key: "numero", label: "Numéro", type: "text", required: true, value: row.numero },
-    { key: "devis_id", label: "Devis lié", type: "select-raw", optionsHtml: `<option value="">—</option>` + devisOptionsHtml(row.devis_id), value: row.devis_id, numeric: true },
-    { key: "contact_id", label: "Contact", type: "select-raw", optionsHtml: `<option value="">—</option>` + contactOptionsHtml(row.contact_id), value: row.contact_id, numeric: true },
-    { key: "date_facture", label: "Date facture", type: "date", value: row.date_facture },
-    { key: "date_echeance", label: "Échéance de paiement", type: "date", value: row.date_echeance },
-    { key: "montant_ht", label: "Montant HT (€)", type: "number", value: row.montant_ht },
-    { key: "montant_ttc", label: "Montant TTC (€)", type: "number", value: row.montant_ttc },
-    { key: "statut", label: "Statut", type: "select", options: STATUTS_FACTURE, value: row.statut || "Impayée" },
-    { key: "date_paiement", label: "Date de paiement", type: "date", value: row.date_paiement },
-    { key: "notes", label: "Notes", type: "textarea", value: row.notes },
+  y += 6;
+  doc.setFontSize(12); doc.text("Détail de la prestation", 20, y); y += 9;
+  doc.setFontSize(11);
+  const rows = [
+    ["Type d'évènement", d.type_evenement || "—"],
+    ["Date de l'évènement", fmtDateFR(d.date_evenement) || "—"],
+    ["Nombre d'invités", d.nb_invites != null ? String(d.nb_invites) : "—"],
+    ["Montant HT", ht ? ht.toFixed(2) + " €" : "—"],
+    ["TVA (" + tva + "%)", mtva.toFixed(2) + " €"],
+    ["Montant TTC", ttc.toFixed(2) + " €"],
   ];
-}
-
-function handleNewFactureClick() {
-  const devisId = Number(document.getElementById("facture-source-devis").value) || null;
-  if (!devisId) { showToast("Sélectionne d'abord un devis accepté dans la liste"); return; }
-  const devis = findDevis(devisId);
-  if (!devis) return;
-  const echeance = new Date();
-  echeance.setDate(echeance.getDate() + 30);
-
-  openModal({
-    title: "Générer une facture",
-    table: "factures",
-    id: null,
-    fields: facturationFieldSet({
-      numero: nextFactureNumero(),
-      devis_id: devisId,
-      contact_id: devis.contact_id,
-      date_facture: todayStr(),
-      date_echeance: echeance.toISOString().slice(0, 10),
-      montant_ht: devis.montant_ht,
-      montant_ttc: devis.montant_ttc,
-      statut: "Impayée",
-      notes: devis.notes,
-    }),
-    onSaved: refreshAll,
+  if (d.acompte) rows.push(["Acompte demandé", (d.montant_acompte ? Number(d.montant_acompte).toFixed(2) + " €" : "Oui")]);
+  rows.forEach(([k, v]) => {
+    doc.text(k, 20, y); doc.text(v, 130, y); y += 7;
   });
+
+  y += 6;
+  doc.setFontSize(13);
+  doc.text("TOTAL TTC : " + ttc.toFixed(2) + " €", 20, y);
+  if (d.notes) { y += 12; doc.setFontSize(10); doc.text(doc.splitTextToSize("Notes : " + d.notes, 170), 20, y); }
+
+  doc.save((d.numero || "devis").replace(/\s+/g, "_") + ".pdf");
 }
 
-function openFactureDialog(id) {
-  const row = id ? (cache.factures.find(f => f.id === id) || {}) : {};
+// ========================================================================
+//  GRILLE TARIFAIRE
+// ========================================================================
+function renderGrille() {
+  const searchEl = document.getElementById("grille-search");
+  if (!searchEl.dataset.bound) { searchEl.addEventListener("input", renderGrille); searchEl.dataset.bound = "1"; }
+  const search = (searchEl.value || "").toLowerCase();
+  let rows = [...cache.grille_tarifaire];
+  if (search) rows = rows.filter(g => ((g.nom_presta || "") + " " + (g.details || "")).toLowerCase().includes(search));
+
+  const tbody = document.getElementById("grille-tbody");
+  tbody.innerHTML = rows.length ? rows.map(g => `
+    <tr>
+      <td>${g.nom_presta || "—"}</td>
+      <td>${g.details || "—"}</td>
+      <td>${g.pu_ht != null ? g.pu_ht + " €" : "—"}</td>
+      <td>${g.tva != null ? g.tva + " %" : "—"}</td>
+      <td>${g.montant_tva != null ? g.montant_tva + " €" : "—"}</td>
+      <td><strong>${g.pu_ttc != null ? g.pu_ttc + " €" : "—"}</strong></td>
+      <td class="row-actions">
+        <button onclick="openGrilleDialog(${g.id})">✎</button>
+        <button onclick="confirmDelete('grille_tarifaire', ${g.id}, renderGrille)">🗑</button>
+      </td>
+    </tr>`).join("") : `<tr class="empty-row"><td colspan="7">Aucune prestation — ajoute ta première ligne</td></tr>`;
+}
+
+function openGrilleDialog(id) {
+  const row = id ? cache.grille_tarifaire.find(g => g.id === id) : {};
   openModal({
-    title: id ? "Modifier la facture" : "Nouvelle facture",
-    table: "factures",
+    title: id ? "Modifier la prestation" : "Nouvelle prestation",
+    table: "grille_tarifaire",
     id: id,
-    fields: facturationFieldSet(row),
+    fields: [
+      { key: "nom_presta", label: "Nom de la prestation", type: "text", required: true, value: row.nom_presta },
+      { key: "details", label: "Détails", type: "textarea", value: row.details },
+      { key: "pu_ht", label: "PU HT (€)", type: "number", value: row.pu_ht },
+      { key: "tva", label: "TVA (%)", type: "select", options: TVA_RATES, value: row.tva != null ? row.tva : 20 },
+      { key: "montant_tva", label: "Montant TVA (€) — calculé", type: "computed", value: row.montant_tva },
+      { key: "pu_ttc", label: "PU TTC (€) — calculé", type: "computed", value: row.pu_ttc },
+    ],
+    onRender: (form) => {
+      const calc = () => {
+        const ht = Number(form.elements["pu_ht"].value || 0);
+        const tva = Number(form.elements["tva"].value || 0);
+        const mtva = round2(ht * tva / 100);
+        form.elements["montant_tva"].value = ht ? mtva : "";
+        form.elements["pu_ttc"].value = ht ? round2(ht + mtva) : "";
+      };
+      form.elements["pu_ht"].addEventListener("input", calc);
+      form.elements["tva"].addEventListener("change", calc);
+      calc();
+    },
     onSaved: refreshAll,
   });
-}
-
-function printFacture(id) {
-  const f = findFacture(id);
-  if (!f) return;
-  const contact = findContact(f.contact_id);
-  const devis = f.devis_id ? findDevis(f.devis_id) : null;
-  const w = window.open("", "_blank");
-  if (!w) { showToast("Autorise les pop-ups pour imprimer / exporter en PDF"); return; }
-
-  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Facture ${escapeHtml(f.numero || "")}</title>
-<style>
-  body{font-family:Helvetica,Arial,sans-serif;color:#20222A;padding:40px;max-width:720px;margin:0 auto;}
-  h1{font-size:22px;margin:0 0 4px;}
-  .muted{color:#8A8F98;font-size:12.5px;}
-  .row{display:flex;justify-content:space-between;gap:30px;margin:28px 0;}
-  .box{font-size:13px;line-height:1.5;}
-  table{width:100%;border-collapse:collapse;margin-top:24px;}
-  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #E4E3DE;font-size:13px;}
-  th{color:#8A8F98;text-transform:uppercase;font-size:11px;}
-  .total{text-align:right;font-size:15px;font-weight:bold;margin-top:16px;}
-  .legal{margin-top:50px;font-size:11px;color:#8A8F98;}
-  @media print{ body{padding:0;} }
-</style></head><body>
-  <h1>Facture ${escapeHtml(f.numero || "")}</h1>
-  <div class="muted">Date : ${fmtDateFR(f.date_facture)} — Échéance : ${fmtDateFR(f.date_echeance)}</div>
-  <div class="row">
-    <div class="box">
-      <strong>${escapeHtml(ENTREPRISE.nom)}</strong><br>
-      ${escapeHtml(ENTREPRISE.adresse).replace(/\n/g, "<br>")}<br>
-      ${ENTREPRISE.siret ? "SIRET : " + escapeHtml(ENTREPRISE.siret) + "<br>" : ""}
-      ${ENTREPRISE.tva ? escapeHtml(ENTREPRISE.tva) + "<br>" : ""}
-      ${escapeHtml(ENTREPRISE.email || "")} ${escapeHtml(ENTREPRISE.telephone || "")}
-    </div>
-    <div class="box">
-      <strong>Facturé à</strong><br>
-      ${contact ? escapeHtml(contactLabel(contact)) : "—"}<br>
-      ${contact && contact.societe ? escapeHtml(contact.societe) + "<br>" : ""}
-      ${contact && contact.adresse ? escapeHtml(contact.adresse).replace(/\n/g, "<br>") + "<br>" : ""}
-      ${contact && contact.email ? escapeHtml(contact.email) : ""}
-    </div>
-  </div>
-  <table>
-    <thead><tr><th>Désignation</th><th>Montant HT</th><th>Montant TTC</th></tr></thead>
-    <tbody><tr>
-      <td>${devis ? escapeHtml(devis.type_evenement || "Prestation") + (devis.date_evenement ? " — " + fmtDateFR(devis.date_evenement) : "") : "Prestation"}</td>
-      <td>${f.montant_ht != null ? f.montant_ht + " €" : "—"}</td>
-      <td>${f.montant_ttc != null ? f.montant_ttc + " €" : "—"}</td>
-    </tr></tbody>
-  </table>
-  <div class="total">Total TTC à payer : ${f.montant_ttc != null ? f.montant_ttc + " €" : "—"}</div>
-  ${f.notes ? `<div class="box" style="margin-top:20px;"><strong>Notes</strong><br>${escapeHtml(f.notes).replace(/\n/g, "<br>")}</div>` : ""}
-  <div class="legal">${f.statut === "Payée" ? "Facture acquittée." : "Facture à régler avant le " + fmtDateFR(f.date_echeance) + "."} En cas de retard de paiement, une pénalité pourra être appliquée conformément aux conditions générales de vente.</div>
-</body></html>`;
-
-  w.document.write(html);
-  w.document.close();
-  w.focus();
-  setTimeout(() => w.print(), 300);
 }
 
 // ========================================================================
@@ -659,16 +622,16 @@ function renderContacts() {
   }
   let rows = [...cache.contacts];
   if (search) {
-    rows = rows.filter(c => (contactLabel(c) + " " + (c.societe || "") + " " + (c.email || "")).toLowerCase().includes(search));
+    rows = rows.filter(c => (contactLabel(c) + " " + (c.societe || "") + " " + (c.email || "") + " " + (c.categorie || "")).toLowerCase().includes(search));
   }
   const tbody = document.getElementById("contact-tbody");
   tbody.innerHTML = rows.length ? rows.map(c => `
     <tr>
       <td>${contactLabel(c)}</td>
-      <td>${c.societe || "—"}</td>
+      <td>${c.societe || "—"}${c.poste ? " · " + c.poste : ""}</td>
       <td>${c.email || "—"}</td>
       <td>${c.telephone || "—"}</td>
-      <td>${c.type_evenement_interet || "—"}</td>
+      <td>${badge(c.categorie, STATUT_COLORS[c.categorie]) || (c.type_evenement_interet || "—")}</td>
       <td class="row-actions">
         <button onclick="openContactDialog(${c.id})">✎</button>
         <button onclick="confirmDelete('contacts', ${c.id}, renderContacts)">🗑</button>
@@ -685,7 +648,9 @@ function openContactDialog(id) {
     fields: [
       { key: "nom", label: "Nom", type: "text", required: true, value: row.nom },
       { key: "prenom", label: "Prénom", type: "text", value: row.prenom },
-      { key: "societe", label: "Société", type: "text", value: row.societe },
+      { key: "societe", label: "Société / entreprise", type: "text", value: row.societe },
+      { key: "poste", label: "Poste (si entreprise)", type: "text", value: row.poste },
+      { key: "categorie", label: "Catégorie", type: "select", options: CATEGORIES_CONTACT, value: row.categorie || "Client" },
       { key: "email", label: "Email", type: "text", value: row.email },
       { key: "telephone", label: "Téléphone", type: "text", value: row.telephone },
       { key: "adresse", label: "Adresse", type: "textarea", value: row.adresse },
@@ -700,29 +665,36 @@ function openContactDialog(id) {
 //  EVENEMENTS
 // ========================================================================
 function renderEvenements() {
+  ensureFilterOptions("evenement-filter-type", TYPES_EVENEMENT);
   ensureFilterOptions("evenement-filter-statut", STATUTS_EVENEMENT);
-  const filter = document.getElementById("evenement-filter-statut").value;
+  ensureFilterOptions("evenement-filter-mois", MOIS_FR.map((m, i) => ({ value: String(i + 1).padStart(2, "0"), label: m })));
+
+  const fType = document.getElementById("evenement-filter-type").value;
+  const fMois = document.getElementById("evenement-filter-mois").value;
+  const fStatut = document.getElementById("evenement-filter-statut").value;
+
   let rows = [...cache.evenements].sort((a, b) => (a.date_evenement || "9999").localeCompare(b.date_evenement || "9999"));
-  if (filter) rows = rows.filter(e => e.statut === filter);
+  if (fType) rows = rows.filter(e => e.type_evenement === fType);
+  if (fStatut) rows = rows.filter(e => e.statut === fStatut);
+  if (fMois) rows = rows.filter(e => (e.date_evenement || "").slice(5, 7) === fMois);
 
   const tbody = document.getElementById("evenement-tbody");
-  tbody.innerHTML = rows.length ? rows.map(e => `
+  tbody.innerHTML = rows.length ? rows.map(e => {
+    const dateTxt = fmtDateFR(e.date_evenement) + (e.date_fin && e.date_fin !== e.date_evenement ? " → " + fmtDateFR(e.date_fin) : "");
+    return `
     <tr>
       <td>${e.titre || "—"}</td>
       <td>${e.type_evenement || "—"}</td>
-      <td>${fmtDateFR(e.date_evenement)}</td>
-      <td>${(e.heure_debut || "—") + (e.heure_fin ? " – " + e.heure_fin : "")}</td>
+      <td>${dateTxt || "—"}</td>
       <td>${e.nb_invites ?? "—"}</td>
+      <td>${e.formule || "—"}</td>
       <td>${badge(e.statut, STATUT_COLORS[e.statut])}</td>
       <td class="row-actions">
         <button onclick="openEvenementDialog(${e.id})">✎</button>
         <button onclick="confirmDelete('evenements', ${e.id}, renderEvenements)">🗑</button>
       </td>
-    </tr>`).join("") : `<tr class="empty-row"><td colspan="7">Aucun évènement</td></tr>`;
-}
-
-function devisOptionsHtml(selectedId) {
-  return cache.devis.map(d => `<option value="${d.id}" ${d.id === selectedId ? "selected" : ""}>${d.numero || ("Devis #" + d.id)}</option>`).join("");
+    </tr>`;
+  }).join("") : `<tr class="empty-row"><td colspan="7">Aucun évènement</td></tr>`;
 }
 
 function openEvenementDialog(id, defaultDate) {
@@ -732,16 +704,79 @@ function openEvenementDialog(id, defaultDate) {
     table: "evenements",
     id: id,
     fields: [
-      { key: "titre", label: "Titre", type: "text", required: true, value: row.titre },
-      { key: "contact_id", label: "Contact", type: "select-raw", optionsHtml: `<option value="">—</option>` + contactOptionsHtml(row.contact_id), value: row.contact_id, numeric: true },
+      { key: "titre", label: "Titre (auto : date + client si vide)", type: "text", value: row.titre },
+      { key: "contact_id", label: "Client / contact", type: "select-raw", optionsHtml: `<option value="">—</option>` + contactOptionsHtml(row.contact_id), value: row.contact_id, numeric: true },
       { key: "devis_id", label: "Devis lié", type: "select-raw", optionsHtml: `<option value="">—</option>` + devisOptionsHtml(row.devis_id), value: row.devis_id, numeric: true },
       { key: "type_evenement", label: "Type d'évènement", type: "select", options: TYPES_EVENEMENT, value: row.type_evenement },
-      { key: "date_evenement", label: "Date", type: "date", value: row.date_evenement || defaultDate },
-      { key: "heure_debut", label: "Heure début", type: "time", value: row.heure_debut },
-      { key: "heure_fin", label: "Heure fin", type: "time", value: row.heure_fin },
-      { key: "nb_invites", label: "Nombre d'invités", type: "number", value: row.nb_invites },
-      { key: "lieu", label: "Lieu", type: "text", value: row.lieu },
+      { key: "formule", label: "Formule", type: "select", options: FORMULES, value: row.formule },
+      { key: "date_evenement", label: "Date (début)", type: "date", value: row.date_evenement || defaultDate },
+      { key: "date_fin", label: "Date de fin (si plusieurs jours)", type: "date", value: row.date_fin },
+      { key: "nb_adultes", label: "Nombre d'adultes", type: "number", value: row.nb_adultes },
+      { key: "nb_enfants", label: "Nombre d'enfants", type: "number", value: row.nb_enfants },
+      { key: "nb_invites", label: "Total invités — calculé", type: "computed", value: row.nb_invites },
+      { key: "budget", label: "Budget (€)", type: "number", value: row.budget },
+      { key: "provenance", label: "Provenance client", type: "select", options: SOURCES_PROSPECT, value: row.provenance },
       { key: "statut", label: "Statut", type: "select", options: STATUTS_EVENEMENT, value: row.statut || "Option" },
+      { key: "prochain_rdv", label: "Prochain RDV", type: "date", value: row.prochain_rdv },
+      { key: "relance", label: "Relance", type: "date", value: row.relance },
+      { key: "notes", label: "Description / notes", type: "textarea", value: row.notes },
+    ],
+    onRender: (form) => {
+      const calc = () => {
+        const a = Number(form.elements["nb_adultes"].value || 0);
+        const e = Number(form.elements["nb_enfants"].value || 0);
+        form.elements["nb_invites"].value = (a || e) ? (a + e) : "";
+      };
+      form.elements["nb_adultes"].addEventListener("input", calc);
+      form.elements["nb_enfants"].addEventListener("input", calc);
+      calc();
+    },
+    beforeSave: (v) => {
+      if (!v.titre) {
+        const c = findContact(v.contact_id);
+        v.titre = [fmtDateFR(v.date_evenement), contactLabel(c)].filter(x => x && x !== "—").join(" – ") || "Évènement";
+      }
+    },
+    onSaved: refreshAll,
+  });
+}
+
+// ========================================================================
+//  RDV
+// ========================================================================
+function renderRdv() {
+  ensureFilterOptions("rdv-filter-statut", STATUTS_RDV);
+  const filter = document.getElementById("rdv-filter-statut").value;
+  let rows = [...cache.rdv].sort((a, b) => ((a.date_rdv || "9999") + (a.heure || "")).localeCompare((b.date_rdv || "9999") + (b.heure || "")));
+  if (filter) rows = rows.filter(r => r.statut === filter);
+
+  const tbody = document.getElementById("rdv-tbody");
+  tbody.innerHTML = rows.length ? rows.map(r => `
+    <tr>
+      <td>${fmtDateFR(r.date_rdv)}</td>
+      <td>${r.heure || "—"}</td>
+      <td>${r.objet || "—"}</td>
+      <td>${contactLabel(findContact(r.contact_id))}</td>
+      <td>${badge(r.statut, STATUT_COLORS[r.statut])}</td>
+      <td class="row-actions">
+        <button onclick="openRdvDialog(${r.id})">✎</button>
+        <button onclick="confirmDelete('rdv', ${r.id}, renderRdv)">🗑</button>
+      </td>
+    </tr>`).join("") : `<tr class="empty-row"><td colspan="6">Aucun rendez-vous</td></tr>`;
+}
+
+function openRdvDialog(id) {
+  const row = id ? cache.rdv.find(r => r.id === id) : {};
+  openModal({
+    title: id ? "Modifier le RDV" : "Nouveau RDV",
+    table: "rdv",
+    id: id,
+    fields: [
+      { key: "objet", label: "Objet", type: "text", required: true, value: row.objet },
+      { key: "contact_id", label: "Contact", type: "select-raw", optionsHtml: `<option value="">—</option>` + contactOptionsHtml(row.contact_id), value: row.contact_id, numeric: true },
+      { key: "date_rdv", label: "Date", type: "date", value: row.date_rdv },
+      { key: "heure", label: "Heure", type: "time", value: row.heure },
+      { key: "statut", label: "Statut", type: "select", options: STATUTS_RDV, value: row.statut || "Prévu" },
       { key: "notes", label: "Notes", type: "textarea", value: row.notes },
     ],
     onSaved: refreshAll,
@@ -759,11 +794,19 @@ function renderCalendrier() {
   document.getElementById("cal-month-lbl").textContent = `${MOIS_FR[month - 1]} ${year}`;
 
   const eventsByDay = {};
+  const addDay = (day, e) => { (eventsByDay[day] = eventsByDay[day] || []).push(e); };
   cache.evenements.forEach(e => {
     if (!e.date_evenement) return;
-    const [y, m, d] = e.date_evenement.split("-").map(Number);
-    if (y === year && m === month) {
-      (eventsByDay[d] = eventsByDay[d] || []).push(e);
+    const start = e.date_evenement;
+    const end = e.date_fin && e.date_fin >= start ? e.date_fin : start;
+    // parcourt chaque jour de la plage qui tombe dans le mois affiché
+    let cur = new Date(start + "T00:00:00");
+    const last = new Date(end + "T00:00:00");
+    let guard = 0;
+    while (cur <= last && guard < 366) {
+      if (cur.getFullYear() === year && (cur.getMonth() + 1) === month) addDay(cur.getDate(), e);
+      cur.setDate(cur.getDate() + 1);
+      guard++;
     }
   });
 
@@ -805,8 +848,12 @@ function renderCalDay() {
     return;
   }
   lbl.textContent = "Évènements du " + fmtDateFR(calState.selected);
-  const rows = cache.evenements.filter(e => e.date_evenement === calState.selected)
-    .sort((a, b) => (a.heure_debut || "").localeCompare(b.heure_debut || ""));
+  const sel = calState.selected;
+  const rows = cache.evenements.filter(e => {
+    if (!e.date_evenement) return false;
+    const end = e.date_fin && e.date_fin >= e.date_evenement ? e.date_fin : e.date_evenement;
+    return sel >= e.date_evenement && sel <= end;
+  }).sort((a, b) => (a.heure_debut || "").localeCompare(b.heure_debut || ""));
   tbody.innerHTML = rows.length ? rows.map(e => `
     <tr onclick="openEvenementDialog(${e.id})" style="cursor:pointer;">
       <td>${e.heure_debut || "—"}</td><td>${e.titre}</td><td>${e.type_evenement || ""}</td><td>${badge(e.statut, STATUT_COLORS[e.statut])}</td>
@@ -816,25 +863,34 @@ function renderCalDay() {
 // ========================================================================
 //  MODAL GENERIQUE
 // ========================================================================
-function openModal({ title, table, id, fields, onSaved }) {
-  modalContext = { table, id, fields, onSaved };
+function escapeAttr(v) { return String(v).replace(/"/g, "&quot;"); }
+
+function openModal({ title, table, id, fields, onSaved, onRender, beforeSave }) {
+  modalContext = { table, id, fields, onSaved, onRender, beforeSave };
   document.getElementById("modal-title").textContent = title;
   const form = document.getElementById("modal-form");
   form.innerHTML = fields.map(f => {
     let input;
     if (f.type === "select") {
-      input = `<select name="${f.key}">${(f.options || []).map(o => `<option value="${o}" ${o === f.value ? "selected" : ""}>${o}</option>`).join("")}</select>`;
+      input = `<select name="${f.key}">${(f.options || []).map(o => `<option value="${o}" ${String(o) === String(f.value) ? "selected" : ""}>${o}</option>`).join("")}</select>`;
     } else if (f.type === "select-raw") {
       input = `<select name="${f.key}">${f.optionsHtml}</select>`;
     } else if (f.type === "textarea") {
       input = `<textarea name="${f.key}">${f.value || ""}</textarea>`;
+    } else if (f.type === "checkbox") {
+      input = `<input type="checkbox" name="${f.key}" ${f.value ? "checked" : ""} style="width:auto;">`;
+    } else if (f.type === "file") {
+      input = `<input type="file" name="${f.key}" accept="${f.accept || "*"}">`;
+    } else if (f.type === "computed") {
+      input = `<input type="number" name="${f.key}" value="${f.value != null ? escapeAttr(f.value) : ""}" readonly style="background:#F3F2EE;color:var(--muted);">`;
     } else {
-      input = `<input type="${f.type}" name="${f.key}" value="${f.value != null ? f.value : ""}" ${f.required ? "required" : ""}>`;
+      input = `<input type="${f.type}" name="${f.key}" value="${f.value != null ? escapeAttr(f.value) : ""}" ${f.required ? "required" : ""}>`;
     }
     return `<div class="field"><label>${f.label}${f.required ? " *" : ""}</label>${input}</div>`;
   }).join("");
   document.getElementById("modal-delete").style.display = id ? "inline-block" : "none";
   document.getElementById("modal-overlay").classList.add("open");
+  if (onRender) onRender(form);
 }
 
 function closeModal() {
@@ -844,27 +900,45 @@ function closeModal() {
 
 async function saveModal() {
   if (!modalContext) return;
-  const { table, id, fields, onSaved } = modalContext;
+  const { table, id, fields, onSaved, beforeSave } = modalContext;
   const form = document.getElementById("modal-form");
   const values = {};
+  const fileFields = [];
   let missingRequired = false;
   fields.forEach(f => {
     const el = form.elements[f.key];
+    if (!el) return;
+    if (f.type === "file") { fileFields.push({ f, el }); return; }
+    if (f.type === "checkbox") { values[f.key] = el.checked; return; }
     let val = el.value;
     if (f.required && !val) missingRequired = true;
     if (val === "") val = null;
-    if (val !== null && (f.type === "number" || f.numeric)) val = Number(val);
+    if (val !== null && (f.type === "number" || f.type === "computed" || f.numeric)) val = Number(val);
     values[f.key] = val;
   });
   if (missingRequired) { showToast("Merci de remplir les champs obligatoires"); return; }
+  if (beforeSave) beforeSave(values);
 
+  let saved;
   if (id) {
-    await updateRow(table, id, values);
-    showToast("Modifications enregistrées");
+    saved = await updateRow(table, id, values);
   } else {
-    await insertRow(table, values);
-    showToast("Ajouté avec succès");
+    saved = await insertRow(table, values);
   }
+
+  // Upload des fichiers joints (ex : devis signé)
+  if (saved) {
+    for (const { f, el } of fileFields) {
+      if (el.files && el.files[0]) {
+        const path = `${currentUser.id}/${table}-${saved.id}.pdf`;
+        const { error } = await sb.storage.from("devis-signes").upload(path, el.files[0], { upsert: true, contentType: "application/pdf" });
+        if (error) { showToast("Erreur envoi PDF"); console.error(error); }
+        else { await updateRow(table, saved.id, { pdf_path: path }); }
+      }
+    }
+  }
+
+  showToast(id ? "Modifications enregistrées" : "Ajouté avec succès");
   closeModal();
   if (onSaved) await onSaved();
 }
@@ -887,14 +961,8 @@ function confirmDelete(table, id, afterFn) {
 document.addEventListener("DOMContentLoaded", () => {
   // Auth
   document.getElementById("auth-submit").addEventListener("click", handleAuthSubmit);
-  document.getElementById("auth-switch-link").addEventListener("click", () => {
-    if (authMode === "forgot") setAuthMode("login");
-    else setAuthMode(authMode === "login" ? "signup" : "login");
-  });
-  document.getElementById("auth-forgot-link").addEventListener("click", () => setAuthMode("forgot"));
+  document.getElementById("auth-switch-link").addEventListener("click", () => setAuthMode(authMode === "login" ? "signup" : "login"));
   document.getElementById("auth-password").addEventListener("keydown", e => { if (e.key === "Enter") handleAuthSubmit(); });
-  document.getElementById("auth-password-confirm").addEventListener("keydown", e => { if (e.key === "Enter") handleAuthSubmit(); });
-  document.getElementById("auth-email").addEventListener("keydown", e => { if (e.key === "Enter") handleAuthSubmit(); });
   document.getElementById("logout-btn").addEventListener("click", handleLogout);
 
   // Nav
@@ -902,17 +970,21 @@ document.addEventListener("DOMContentLoaded", () => {
     el.addEventListener("click", () => showPage(el.dataset.page));
   });
 
-  // Shortcuts (toolbar + boutons de page)
+  // Raccourcis (toolbar)
   document.getElementById("sc-devis").addEventListener("click", () => openDevisDialog(null));
   document.getElementById("sc-contact").addEventListener("click", () => openContactDialog(null));
   document.getElementById("sc-evenement").addEventListener("click", () => openEvenementDialog(null));
+  document.getElementById("sc-rdv").addEventListener("click", () => openRdvDialog(null));
   document.getElementById("sc-todo").addEventListener("click", () => openTodoDialog(null));
+
+  // Boutons "+" de page
   document.getElementById("btn-new-todo").addEventListener("click", () => openTodoDialog(null));
   document.getElementById("btn-new-prospect").addEventListener("click", () => openProspectDialog(null));
   document.getElementById("btn-new-devis").addEventListener("click", () => openDevisDialog(null));
+  document.getElementById("btn-new-grille").addEventListener("click", () => openGrilleDialog(null));
   document.getElementById("btn-new-contact").addEventListener("click", () => openContactDialog(null));
   document.getElementById("btn-new-evenement").addEventListener("click", () => openEvenementDialog(null));
-  document.getElementById("btn-new-facture").addEventListener("click", handleNewFactureClick);
+  document.getElementById("btn-new-rdv").addEventListener("click", () => openRdvDialog(null));
 
   // Modal
   document.getElementById("modal-cancel").addEventListener("click", closeModal);
@@ -937,20 +1009,19 @@ document.addEventListener("DOMContentLoaded", () => {
     renderCalendrier();
   });
 
-  // Clavier (raccourcis identiques à la version Python)
+  // Clavier
   document.addEventListener("keydown", e => {
     if (!currentUser) return;
     if (e.ctrlKey && e.key === "d") { e.preventDefault(); openDevisDialog(null); }
     if (e.ctrlKey && e.key === "k") { e.preventDefault(); openContactDialog(null); }
     if (e.ctrlKey && e.key === "e") { e.preventDefault(); openEvenementDialog(null); }
     if (e.ctrlKey && e.key === "t") { e.preventDefault(); openTodoDialog(null); }
+    if (e.ctrlKey && e.key === "r") { e.preventDefault(); openRdvDialog(null); }
   });
 
   // Session existante ?
   sb.auth.getSession().then(({ data }) => {
-    if (data.session && !window.location.hash.includes("type=recovery")) {
-      onLoggedIn(data.session.user);
-    }
+    if (data.session) onLoggedIn(data.session.user);
   });
 
   // Service worker (PWA)

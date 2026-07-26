@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>CRM Espace Réception CBLF</title>
+<title>Gestion Réception — CRM salle de réception</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#22252E">
 <style>
@@ -126,16 +126,12 @@
   <div class="auth-box">
     <div class="auth-logo">🎪</div>
     <h1 id="auth-title">Connexion</h1>
-    <p class="sub" id="auth-sub">CRM Espace Réception CBLF — accède à ton compte</p>
+    <p class="sub" id="auth-sub">Gestion Réception — accède à ton compte</p>
     <div class="auth-error" id="auth-error"></div>
     <input type="email" id="auth-email" placeholder="Adresse email" autocomplete="username">
     <input type="password" id="auth-password" placeholder="Mot de passe" autocomplete="current-password">
-    <input type="password" id="auth-password-confirm" placeholder="Confirme le nouveau mot de passe" autocomplete="new-password" style="display:none;">
-    <div id="auth-forgot-row" style="text-align:right;margin:-6px 0 14px;">
-      <a id="auth-forgot-link" style="font-size:12.5px;color:var(--accent);cursor:pointer;text-decoration:none;">Mot de passe oublié ?</a>
-    </div>
     <button class="primary" id="auth-submit">Se connecter</button>
-    <div class="auth-switch" id="auth-switch">
+    <div class="auth-switch">
       <span id="auth-switch-text">Pas encore de compte ?</span>
       <a id="auth-switch-link">Créer un compte</a>
     </div>
@@ -146,14 +142,15 @@
 <div id="app-screen">
   <div class="layout">
     <div class="sidebar">
-      <div class="logo">🎪 CRM CBLF</div>
+      <div class="logo">🎪 Gestion<br>Réception</div>
       <div class="nav-item" data-page="dashboard">🏠  Dashboard</div>
       <div class="nav-item" data-page="todo">✅  To Do List</div>
       <div class="nav-item" data-page="prospects">🎯  Suivi Prospects</div>
       <div class="nav-item" data-page="devis">📄  Devis</div>
-      <div class="nav-item" data-page="facturation">💶  Facturation</div>
+      <div class="nav-item" data-page="grille">💶  Grille Tarifaire</div>
       <div class="nav-item" data-page="contacts">👤  Contacts</div>
       <div class="nav-item" data-page="evenements">🎉  Évènements</div>
+      <div class="nav-item" data-page="rdv">🤝  RDV</div>
       <div class="nav-item" data-page="calendrier">📅  Calendrier</div>
       <div class="sidebar-footer">
         <div style="color:#C7CAD1;font-size:11.5px;margin-bottom:6px;" id="user-email-lbl"></div>
@@ -167,6 +164,7 @@
         <button class="shortcut-btn" id="sc-devis">＋ Nouveau devis</button>
         <button class="shortcut-btn" id="sc-contact">＋ Nouveau contact</button>
         <button class="shortcut-btn" id="sc-evenement">＋ Nouvel évènement</button>
+        <button class="shortcut-btn" id="sc-rdv">＋ Nouveau RDV</button>
         <button class="shortcut-btn" id="sc-todo">＋ Nouvelle tâche</button>
       </div>
 
@@ -176,6 +174,16 @@
         <div class="page" id="page-dashboard">
           <div class="page-title">Dashboard</div>
           <div class="cards-row" id="dash-cards"></div>
+          <div class="panel">
+            <h3>🤝 RDV à venir</h3>
+            <table class="data"><thead><tr><th>Date</th><th>Heure</th><th>Objet</th><th>Contact</th><th>Statut</th></tr></thead>
+            <tbody id="dash-rdv"></tbody></table>
+          </div>
+          <div class="panel">
+            <h3>🎉 Évènements à venir</h3>
+            <table class="data"><thead><tr><th>Date</th><th>Titre</th><th>Type</th><th>Invités</th><th>Statut</th></tr></thead>
+            <tbody id="dash-events"></tbody></table>
+          </div>
           <div class="panel">
             <h3>Activité récente</h3>
             <table class="data"><thead><tr><th>Date</th><th>Type</th><th>Détail</th></tr></thead>
@@ -213,28 +221,28 @@
         <div class="page" id="page-devis">
           <div class="page-title">Devis</div>
           <div class="page-toolbar">
-            <select class="filter" id="devis-filter-statut"><option value="">Tous les statuts</option></select>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <input class="filter" id="devis-search" placeholder="Rechercher un client…" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
+              <select class="filter" id="devis-filter-statut"><option value="">Tous les statuts</option></select>
+            </div>
             <button class="btn" id="btn-new-devis">＋ Nouveau devis</button>
           </div>
           <table class="data">
-            <thead><tr><th>N°</th><th>Contact</th><th>Type</th><th>Date évènement</th><th>Montant TTC</th><th>Statut</th><th></th></tr></thead>
+            <thead><tr><th>N°</th><th>Contact</th><th>Type</th><th>Date évènement</th><th>Montant TTC</th><th>Acompte</th><th>Statut</th><th></th></tr></thead>
             <tbody id="devis-tbody"></tbody>
           </table>
         </div>
 
-        <!-- FACTURATION -->
-        <div class="page" id="page-facturation">
-          <div class="page-title">Facturation</div>
+        <!-- GRILLE TARIFAIRE -->
+        <div class="page" id="page-grille">
+          <div class="page-title">Grille Tarifaire</div>
           <div class="page-toolbar">
-            <select class="filter" id="facture-filter-statut"><option value="">Tous les statuts</option></select>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <select class="filter" id="facture-source-devis"><option value="">Choisir un devis accepté…</option></select>
-              <button class="btn" id="btn-new-facture">＋ Générer une facture</button>
-            </div>
+            <input class="filter" id="grille-search" placeholder="Rechercher une prestation…" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
+            <button class="btn" id="btn-new-grille">＋ Nouvelle prestation</button>
           </div>
           <table class="data">
-            <thead><tr><th>N°</th><th>Contact</th><th>Date facture</th><th>Échéance</th><th>Montant TTC</th><th>Statut</th><th></th></tr></thead>
-            <tbody id="facture-tbody"></tbody>
+            <thead><tr><th>Prestation</th><th>Détails</th><th>PU HT</th><th>TVA</th><th>Montant TVA</th><th>PU TTC</th><th></th></tr></thead>
+            <tbody id="grille-tbody"></tbody>
           </table>
         </div>
 
@@ -255,12 +263,29 @@
         <div class="page" id="page-evenements">
           <div class="page-title">Évènements</div>
           <div class="page-toolbar">
-            <select class="filter" id="evenement-filter-statut"><option value="">Tous les statuts</option></select>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <select class="filter" id="evenement-filter-type"><option value="">Tous les types</option></select>
+              <select class="filter" id="evenement-filter-mois"><option value="">Tous les mois</option></select>
+              <select class="filter" id="evenement-filter-statut"><option value="">Tous les statuts</option></select>
+            </div>
             <button class="btn" id="btn-new-evenement">＋ Nouvel évènement</button>
           </div>
           <table class="data">
-            <thead><tr><th>Titre</th><th>Type</th><th>Date</th><th>Horaire</th><th>Invités</th><th>Statut</th><th></th></tr></thead>
+            <thead><tr><th>Titre</th><th>Type</th><th>Date</th><th>Invités</th><th>Formule</th><th>Statut</th><th></th></tr></thead>
             <tbody id="evenement-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- RDV -->
+        <div class="page" id="page-rdv">
+          <div class="page-title">Rendez-vous</div>
+          <div class="page-toolbar">
+            <select class="filter" id="rdv-filter-statut"><option value="">Tous les statuts</option></select>
+            <button class="btn" id="btn-new-rdv">＋ Nouveau RDV</button>
+          </div>
+          <table class="data">
+            <thead><tr><th>Date</th><th>Heure</th><th>Objet</th><th>Contact</th><th>Statut</th><th></th></tr></thead>
+            <tbody id="rdv-tbody"></tbody>
           </table>
         </div>
 
@@ -303,6 +328,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
