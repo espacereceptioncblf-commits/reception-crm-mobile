@@ -1207,6 +1207,24 @@ function renderCalDay() {
 //  MODAL GENERIQUE
 // ========================================================================
 function escapeAttr(v) { return String(v).replace(/"/g, "&quot;"); }
+
+// Filtres/recherches par table — remis à zéro après une création pour
+// garantir que le nouvel élément soit visible (sinon un filtre actif,
+// ex. "Envoyée", masquerait une nouvelle facture "Brouillon").
+const PAGE_FILTERS = {
+  factures: ["facture-filter-statut", "facture-search"],
+  devis: ["devis-filter-statut", "devis-search"],
+  contacts: ["contact-filter-categorie", "contact-search"],
+  evenements: ["evenement-filter-type", "evenement-filter-mois", "evenement-filter-statut"],
+  todos: ["todo-filter-statut", "todo-filter-priorite"],
+  rdv: ["rdv-filter-statut"],
+  commandes: ["commande-filter-statut", "commande-search"],
+  grille_tarifaire: ["grille-search"],
+  prospects: ["prospect-filter-statut"],
+};
+function clearTableFilters(table) {
+  (PAGE_FILTERS[table] || []).forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+}
 function openModal({ title, table, id, fields, onSaved, onRender, beforeSave }) {
   modalContext = { table, id, fields, onSaved, onRender, beforeSave };
   document.getElementById("modal-title").textContent = title;
@@ -1318,6 +1336,9 @@ async function saveModal() {
   let saved;
   if (id) saved = await updateRow(table, id, values);
   else saved = await insertRow(table, values);
+
+  // Après une création, on enlève les filtres actifs pour que le nouvel élément soit visible
+  if (!id && saved) clearTableFilters(table);
 
   if (saved) {
     for (const { f, el } of fileFields) {
