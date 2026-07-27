@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Gestion Réception — CRM salle de réception</title>
+<title>CRM Espace Réception CBLF</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#22252E">
 <style>
@@ -53,13 +53,10 @@
   .page{display:none;}
   .page.active{display:block;}
   .page-title{font-size:21px;font-weight:bold;margin:4px 0 18px;}
-  .page-note{font-size:12.5px;color:var(--muted);margin:-10px 0 16px;}
 
   /* cards / dashboard */
   .cards-row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:22px;}
   .stat-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 18px;min-width:150px;flex:1;}
-  .stat-card.clickable{cursor:pointer;transition:.15s;}
-  .stat-card.clickable:hover{border-color:var(--accent);transform:translateY(-2px);}
   .stat-card .num{font-size:26px;font-weight:bold;}
   .stat-card .label{font-size:12px;color:var(--muted);margin-top:2px;}
   .panel{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin-bottom:20px;}
@@ -72,33 +69,28 @@
   .btn.secondary{background:var(--card);color:var(--text);border:1px solid var(--border);font-weight:normal;}
   .btn.secondary:hover{border-color:var(--accent);}
   .btn.danger{background:var(--danger);}
-  select.filter,input.filter{padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;}
+  select.filter{padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;}
 
   /* table */
   table.data{width:100%;border-collapse:collapse;background:var(--card);border-radius:10px;overflow:hidden;border:1px solid var(--border);}
   table.data th{background:#EFEEE9;text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);padding:10px 12px;}
-  table.data td{padding:10px 12px;font-size:13px;border-top:1px solid var(--border);vertical-align:top;}
+  table.data td{padding:10px 12px;font-size:13px;border-top:1px solid var(--border);}
   table.data tr:hover td{background:#FAFAF8;}
   .badge{display:inline-block;padding:3px 9px;border-radius:12px;color:#fff;font-size:11px;font-weight:bold;}
-  .row-actions{white-space:nowrap;}
   .row-actions button{background:none;border:none;font-size:14px;padding:2px 5px;color:var(--muted);}
   .row-actions button:hover{color:var(--accent);}
   .empty-row td{text-align:center;color:var(--muted);padding:26px;font-style:italic;}
-  .due-today{color:var(--danger);font-weight:bold;}
 
   /* modal */
   .modal-overlay{display:none;position:fixed;inset:0;background:rgba(20,20,20,.45);align-items:center;justify-content:center;z-index:50;padding:20px;}
   .modal-overlay.open{display:flex;}
-  .modal-box{background:var(--card);border-radius:10px;width:540px;max-width:100%;max-height:90vh;overflow-y:auto;padding:24px 26px;}
+  .modal-box{background:var(--card);border-radius:10px;width:520px;max-width:100%;max-height:90vh;overflow-y:auto;padding:24px 26px;}
   .modal-box h2{margin:0 0 18px;font-size:17px;}
   .field{margin-bottom:13px;}
   .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:bold;}
   .field input,.field select,.field textarea{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:6px;font-size:13.5px;}
   .field textarea{resize:vertical;min-height:60px;}
-  .field .inline-checks{display:flex;gap:16px;flex-wrap:wrap;}
-  .field .inline-checks label{font-weight:normal;color:var(--text);display:flex;align-items:center;gap:6px;}
-  .field .inline-checks input{width:auto;}
-  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;flex-wrap:wrap;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
 
   /* calendar */
   .cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
@@ -113,36 +105,36 @@
   .cal-cell.today .evt-dot{color:#fff;}
   .cal-day-panel{margin-top:16px;}
 
-  /* devis editor (plein écran) */
-  .editor-overlay{display:none;position:fixed;inset:0;background:var(--bg);z-index:60;overflow-y:auto;padding:24px;}
-  .editor-overlay.open{display:block;}
-  .editor-sheet{background:#fff;max-width:900px;margin:0 auto;border:1px solid var(--border);border-radius:10px;padding:26px 30px;}
-  .editor-head{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:8px;}
-  .editor-head .em{font-size:12px;color:var(--muted);text-align:right;line-height:1.5;}
-  .lines-table{width:100%;border-collapse:collapse;margin-top:10px;}
-  .lines-table th{background:#EFEEE9;font-size:10.5px;text-transform:uppercase;color:var(--muted);padding:6px 5px;text-align:left;}
-  .lines-table td{border-top:1px solid var(--border);padding:4px 5px;}
-  .lines-table input,.lines-table select{width:100%;padding:6px 6px;border:1px solid var(--border);border-radius:5px;font-size:12.5px;}
-  .lines-table .ro{background:#F3F2EE;color:var(--muted);}
-  .lines-table .del{color:var(--danger);border:none;background:none;font-size:15px;}
-  .totaux{margin-top:14px;text-align:right;font-size:14px;line-height:1.8;}
-  .totaux .grand{font-size:17px;font-weight:bold;}
-  .cgv-list label{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;}
-  .cgv-list input{margin-top:3px;}
-  .cgv-order{font-size:11px;color:var(--accent);font-weight:bold;min-width:20px;}
-
-  .toast{position:fixed;bottom:22px;right:22px;background:var(--text);color:#fff;padding:12px 18px;border-radius:7px;font-size:13px;opacity:0;transform:translateY(8px);transition:.25s;z-index:90;max-width:80vw;}
+  .toast{position:fixed;bottom:22px;right:22px;background:var(--text);color:#fff;padding:12px 18px;border-radius:7px;font-size:13px;opacity:0;transform:translateY(8px);transition:.25s;z-index:80;}
   .toast.show{opacity:1;transform:translateY(0);}
-  .warn-banner{background:#FDF3E3;border:1px solid var(--warning);color:#7a5a12;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;}
 
   @media(max-width:820px){
     .layout{flex-direction:column;}
-    .sidebar{width:100%;padding:12px 0;flex-direction:row;flex-wrap:wrap;}
+    .sidebar{
+      position:fixed; left:0; right:0; bottom:0; top:auto; z-index:40;
+      width:100%; flex-direction:row; flex-wrap:nowrap; align-items:stretch;
+      overflow-x:auto; -webkit-overflow-scrolling:touch;
+      padding:4px 4px calc(4px + env(safe-area-inset-bottom));
+      border-top:1px solid #343945;
+      scrollbar-width:none;
+    }
+    .sidebar::-webkit-scrollbar{display:none;}
     .sidebar .logo{display:none;}
-    .nav-item{padding:9px 12px;font-size:12.5px;}
-    .sidebar-footer{margin-top:0;border-top:none;padding:8px 12px;}
+    .nav-item{
+      flex:0 0 auto;width:66px;text-align:center;white-space:normal;
+      padding:7px 4px;font-size:10.5px;line-height:1.35;border-radius:8px;
+    }
+    .nav-item.active{background:var(--accent);}
+    .sidebar-footer{
+      flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+      margin-top:0;border-top:none;border-left:1px solid #343945;
+      padding:4px 14px;
+    }
+    .sidebar-footer #user-email-lbl{display:none;}
+    .sidebar-footer button{font-size:10.5px;padding:6px 0;white-space:nowrap;}
     table.data{font-size:12px;}
-    .content{padding:16px;}
+    .content{padding:16px 16px calc(76px + env(safe-area-inset-bottom));}
+    .toast{bottom:calc(78px + env(safe-area-inset-bottom));right:14px;left:14px;text-align:center;}
   }
 </style>
 </head>
@@ -153,12 +145,16 @@
   <div class="auth-box">
     <div class="auth-logo">🎪</div>
     <h1 id="auth-title">Connexion</h1>
-    <p class="sub" id="auth-sub">Gestion Réception — accède à ton compte</p>
+    <p class="sub" id="auth-sub">CRM Espace Réception CBLF — accède à ton compte</p>
     <div class="auth-error" id="auth-error"></div>
     <input type="email" id="auth-email" placeholder="Adresse email" autocomplete="username">
     <input type="password" id="auth-password" placeholder="Mot de passe" autocomplete="current-password">
+    <input type="password" id="auth-password-confirm" placeholder="Confirme le nouveau mot de passe" autocomplete="new-password" style="display:none;">
+    <div id="auth-forgot-row" style="text-align:right;margin:-6px 0 14px;">
+      <a id="auth-forgot-link" style="font-size:12.5px;color:var(--accent);cursor:pointer;text-decoration:none;">Mot de passe oublié ?</a>
+    </div>
     <button class="primary" id="auth-submit">Se connecter</button>
-    <div class="auth-switch">
+    <div class="auth-switch" id="auth-switch">
       <span id="auth-switch-text">Pas encore de compte ?</span>
       <a id="auth-switch-link">Créer un compte</a>
     </div>
@@ -169,18 +165,15 @@
 <div id="app-screen">
   <div class="layout">
     <div class="sidebar">
-      <div class="logo">🎪 Gestion<br>Réception</div>
+      <div class="logo">🎪 CRM CBLF</div>
       <div class="nav-item" data-page="dashboard">🏠  Dashboard</div>
       <div class="nav-item" data-page="todo">✅  To Do List</div>
-      <div class="nav-item" data-page="prospects">🎯  Suivi Clients</div>
-      <div class="nav-item" data-page="contacts">👤  Contacts</div>
+      <div class="nav-item" data-page="prospects">🎯  Suivi Prospects</div>
       <div class="nav-item" data-page="devis">📄  Devis</div>
-      <div class="nav-item" data-page="factures">🧾  Facturation</div>
+      <div class="nav-item" data-page="facturation">💶  Facturation</div>
+      <div class="nav-item" data-page="contacts">👤  Contacts</div>
       <div class="nav-item" data-page="evenements">🎉  Évènements</div>
-      <div class="nav-item" data-page="rdv">🤝  RDV</div>
       <div class="nav-item" data-page="calendrier">📅  Calendrier</div>
-      <div class="nav-item" data-page="tarification">💶  Tarification</div>
-      <div class="nav-item" data-page="commande">📦  Commande</div>
       <div class="sidebar-footer">
         <div style="color:#C7CAD1;font-size:11.5px;margin-bottom:6px;" id="user-email-lbl"></div>
         <button id="logout-btn">↩ Se déconnecter</button>
@@ -191,10 +184,8 @@
       <div class="toolbar">
         <span class="lbl">Raccourcis :</span>
         <button class="shortcut-btn" id="sc-devis">＋ Nouveau devis</button>
-        <button class="shortcut-btn" id="sc-facture">＋ Nouvelle facture</button>
         <button class="shortcut-btn" id="sc-contact">＋ Nouveau contact</button>
         <button class="shortcut-btn" id="sc-evenement">＋ Nouvel évènement</button>
-        <button class="shortcut-btn" id="sc-rdv">＋ Nouveau RDV</button>
         <button class="shortcut-btn" id="sc-todo">＋ Nouvelle tâche</button>
       </div>
 
@@ -205,14 +196,9 @@
           <div class="page-title">Dashboard</div>
           <div class="cards-row" id="dash-cards"></div>
           <div class="panel">
-            <h3>✅ Aperçu des tâches</h3>
-            <table class="data"><thead><tr><th>Titre</th><th>Lié à</th><th>Priorité</th><th>Échéance</th><th>Statut</th></tr></thead>
-            <tbody id="dash-todos"></tbody></table>
-          </div>
-          <div class="panel">
-            <h3>📌 À venir (RDV, événements & échéances)</h3>
-            <table class="data"><thead><tr><th>Date</th><th>Type</th><th>Détail</th><th>Statut</th></tr></thead>
-            <tbody id="dash-dates"></tbody></table>
+            <h3>Activité récente</h3>
+            <table class="data"><thead><tr><th>Date</th><th>Type</th><th>Détail</th></tr></thead>
+            <tbody id="dash-activity"></tbody></table>
           </div>
         </div>
 
@@ -220,31 +206,54 @@
         <div class="page" id="page-todo">
           <div class="page-title">To Do List</div>
           <div class="page-toolbar">
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-              <select class="filter" id="todo-filter-statut"><option value="">Tous les statuts</option></select>
-              <select class="filter" id="todo-filter-priorite"><option value="">Toutes priorités</option></select>
-              <select class="filter" id="todo-sort"><option value="echeance">Trier par échéance</option><option value="priorite">Trier par priorité</option><option value="statut">Trier par statut</option></select>
-            </div>
+            <select class="filter" id="todo-filter-statut"><option value="">Tous les statuts</option></select>
             <button class="btn" id="btn-new-todo">＋ Nouvelle tâche</button>
           </div>
-          <div class="page-note">Une tâche avec une échéance à 7 jours ou moins passe automatiquement en <strong>Urgente</strong> (affichée en rouge).</div>
           <table class="data">
-            <thead><tr><th>Titre</th><th>Lié à</th><th>Priorité</th><th>Échéance</th><th>Statut</th><th></th></tr></thead>
+            <thead><tr><th>Titre</th><th>Catégorie</th><th>Priorité</th><th>Échéance</th><th>Statut</th><th></th></tr></thead>
             <tbody id="todo-tbody"></tbody>
           </table>
         </div>
 
-        <!-- SUIVI CLIENTS -->
+        <!-- PROSPECTS -->
         <div class="page" id="page-prospects">
-          <div class="page-title">Suivi Clients</div>
+          <div class="page-title">Suivi Prospects</div>
           <div class="page-toolbar">
             <select class="filter" id="prospect-filter-statut"><option value="">Tous les statuts</option></select>
-            <button class="btn" id="btn-new-prospect">＋ Nouvel évènement</button>
+            <button class="btn" id="btn-new-prospect">＋ Nouveau prospect</button>
           </div>
-          <div class="page-note">Suivi de tous les dossiers (prospects et clients). Un clic sur 📋 ouvre la fiche récap de l'évènement.</div>
           <table class="data">
-            <thead><tr><th>Contact</th><th>Date</th><th>Dernière action</th><th>Tâche liée</th><th>Récap</th><th>Statut évt</th><th>Devis</th><th>Facture</th><th></th></tr></thead>
+            <thead><tr><th>Contact</th><th>Statut</th><th>Source</th><th>Budget</th><th>Évènement souhaité</th><th>Relance</th><th></th></tr></thead>
             <tbody id="prospect-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- DEVIS -->
+        <div class="page" id="page-devis">
+          <div class="page-title">Devis</div>
+          <div class="page-toolbar">
+            <select class="filter" id="devis-filter-statut"><option value="">Tous les statuts</option></select>
+            <button class="btn" id="btn-new-devis">＋ Nouveau devis</button>
+          </div>
+          <table class="data">
+            <thead><tr><th>N°</th><th>Contact</th><th>Type</th><th>Date évènement</th><th>Montant TTC</th><th>Statut</th><th></th></tr></thead>
+            <tbody id="devis-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- FACTURATION -->
+        <div class="page" id="page-facturation">
+          <div class="page-title">Facturation</div>
+          <div class="page-toolbar">
+            <select class="filter" id="facture-filter-statut"><option value="">Tous les statuts</option></select>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <select class="filter" id="facture-source-devis"><option value="">Choisir un devis accepté…</option></select>
+              <button class="btn" id="btn-new-facture">＋ Générer une facture</button>
+            </div>
+          </div>
+          <table class="data">
+            <thead><tr><th>N°</th><th>Contact</th><th>Date facture</th><th>Échéance</th><th>Montant TTC</th><th>Statut</th><th></th></tr></thead>
+            <tbody id="facture-tbody"></tbody>
           </table>
         </div>
 
@@ -252,49 +261,12 @@
         <div class="page" id="page-contacts">
           <div class="page-title">Contacts</div>
           <div class="page-toolbar">
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-              <input class="filter" id="contact-search" placeholder="Rechercher un contact…">
-              <select class="filter" id="contact-filter-categorie"><option value="">Toutes catégories</option></select>
-            </div>
+            <input class="filter" id="contact-search" placeholder="Rechercher un contact…" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
             <button class="btn" id="btn-new-contact">＋ Nouveau contact</button>
           </div>
           <table class="data">
-            <thead><tr><th>Nom</th><th>Catégorie</th><th>Société</th><th>Email</th><th>Téléphone</th><th>Provenance</th><th></th></tr></thead>
+            <thead><tr><th>Nom</th><th>Société</th><th>Email</th><th>Téléphone</th><th>Intérêt</th><th></th></tr></thead>
             <tbody id="contact-tbody"></tbody>
-          </table>
-        </div>
-
-        <!-- DEVIS -->
-        <div class="page" id="page-devis">
-          <div class="page-title">Devis</div>
-          <div class="page-note" id="devis-last"></div>
-          <div id="devis-warn"></div>
-          <div class="page-toolbar">
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-              <input class="filter" id="devis-search" placeholder="Rechercher un client…">
-              <select class="filter" id="devis-filter-statut"><option value="">Tous les statuts</option></select>
-            </div>
-            <button class="btn" id="btn-new-devis">＋ Nouveau devis</button>
-          </div>
-          <table class="data">
-            <thead><tr><th>N°</th><th>Évènement</th><th>Contact</th><th>Date évt</th><th>Montant TTC</th><th>Statut</th><th></th></tr></thead>
-            <tbody id="devis-tbody"></tbody>
-          </table>
-        </div>
-
-        <!-- FACTURATION -->
-        <div class="page" id="page-factures">
-          <div class="page-title">Facturation</div>
-          <div class="page-toolbar">
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-              <input class="filter" id="facture-search" placeholder="Rechercher un client…">
-              <select class="filter" id="facture-filter-statut"><option value="">Tous les statuts</option></select>
-            </div>
-            <button class="btn" id="btn-new-facture">＋ Nouvelle facture</button>
-          </div>
-          <table class="data">
-            <thead><tr><th>N°</th><th>Contact</th><th>Devis lié</th><th>Date</th><th>Montant TTC</th><th>Statut</th><th></th></tr></thead>
-            <tbody id="facture-tbody"></tbody>
           </table>
         </div>
 
@@ -302,29 +274,12 @@
         <div class="page" id="page-evenements">
           <div class="page-title">Évènements</div>
           <div class="page-toolbar">
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-              <select class="filter" id="evenement-filter-type"><option value="">Tous les types</option></select>
-              <select class="filter" id="evenement-filter-mois"><option value="">Tous les mois</option></select>
-              <select class="filter" id="evenement-filter-statut"><option value="">Tous les statuts</option></select>
-            </div>
+            <select class="filter" id="evenement-filter-statut"><option value="">Tous les statuts</option></select>
             <button class="btn" id="btn-new-evenement">＋ Nouvel évènement</button>
           </div>
           <table class="data">
-            <thead><tr><th>Date</th><th>Contact</th><th>Provenance</th><th>Type</th><th>Prestation</th><th>Invités</th><th>Statut</th><th>Devis</th><th>Facture</th><th>Dernière action</th><th></th></tr></thead>
+            <thead><tr><th>Titre</th><th>Type</th><th>Date</th><th>Horaire</th><th>Invités</th><th>Statut</th><th></th></tr></thead>
             <tbody id="evenement-tbody"></tbody>
-          </table>
-        </div>
-
-        <!-- RDV -->
-        <div class="page" id="page-rdv">
-          <div class="page-title">Rendez-vous</div>
-          <div class="page-toolbar">
-            <select class="filter" id="rdv-filter-statut"><option value="">Tous les statuts</option></select>
-            <button class="btn" id="btn-new-rdv">＋ Nouveau RDV</button>
-          </div>
-          <table class="data">
-            <thead><tr><th>Date</th><th>Heure</th><th>Objet</th><th>Contact</th><th>Statut</th><th></th></tr></thead>
-            <tbody id="rdv-tbody"></tbody>
           </table>
         </div>
 
@@ -346,45 +301,12 @@
           </div>
         </div>
 
-        <!-- TARIFICATION -->
-        <div class="page" id="page-tarification">
-          <div class="page-title">Tarification</div>
-          <div class="page-toolbar">
-            <input class="filter" id="grille-search" placeholder="Rechercher une prestation…">
-            <button class="btn" id="btn-new-grille">＋ Nouvelle prestation</button>
-          </div>
-          <div class="page-note">Ces prestations alimentent la liste des désignations dans l'éditeur de devis.</div>
-          <table class="data">
-            <thead><tr><th>Prestation</th><th>Détails</th><th>PU HT</th><th>TVA</th><th>Montant TVA</th><th>PU TTC</th><th></th></tr></thead>
-            <tbody id="grille-tbody"></tbody>
-          </table>
-        </div>
-
-        <!-- COMMANDE -->
-        <div class="page" id="page-commande">
-          <div class="page-title">Commande</div>
-          <div class="page-toolbar">
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-              <input class="filter" id="commande-search" placeholder="Rechercher un article…">
-              <select class="filter" id="commande-filter-statut"><option value="">Tous les statuts</option></select>
-            </div>
-            <button class="btn" id="btn-new-commande">＋ Nouvel article</button>
-          </div>
-          <div class="page-note">Chaque article saisi est mémorisé : il te sera proposé automatiquement lors des prochaines commandes.</div>
-          <table class="data">
-            <thead><tr><th>Article</th><th>Qté</th><th>Fournisseur</th><th>Catégorie</th><th>Statut</th><th>Notes</th><th></th></tr></thead>
-            <tbody id="commande-tbody"></tbody>
-          </table>
-          <datalist id="commande-articles"></datalist>
-          <datalist id="commande-fournisseurs"></datalist>
-        </div>
-
       </div>
     </div>
   </div>
 </div>
 
-<!-- ============ MODAL GENERIQUE ============ -->
+<!-- ============ MODAL ============ -->
 <div class="modal-overlay" id="modal-overlay">
   <div class="modal-box">
     <h2 id="modal-title">Titre</h2>
@@ -397,40 +319,9 @@
   </div>
 </div>
 
-<!-- ============ EDITEUR DE DEVIS (A4) ============ -->
-<div class="editor-overlay" id="devis-editor">
-  <div class="editor-sheet">
-    <div class="editor-head">
-      <div>
-        <h2 style="margin:0 0 4px;font-size:22px;">DEVIS</h2>
-        <div id="ed-numero" style="font-size:13px;color:var(--muted);"></div>
-        <div id="ed-client" style="font-size:13px;margin-top:8px;"></div>
-      </div>
-      <div class="em" id="ed-emetteur"></div>
-    </div>
-    <table class="lines-table">
-      <thead><tr>
-        <th style="width:26%;">Désignation</th><th>Qté</th><th>PU TTC</th><th>Remise %</th>
-        <th>Total HT</th><th>TVA %</th><th>Total TVA</th><th>Total TTC</th><th></th>
-      </tr></thead>
-      <tbody id="ed-lines"></tbody>
-    </table>
-    <div style="margin-top:10px;"><button class="btn secondary" type="button" id="ed-add-line">＋ Ajouter une ligne</button></div>
-    <div class="totaux" id="ed-totaux"></div>
-    <div id="ed-cgv-preview" style="margin-top:16px;font-size:12px;color:var(--muted);"></div>
-    <div class="modal-actions" style="margin-top:24px;">
-      <button class="btn secondary" type="button" id="ed-close">Fermer</button>
-      <button class="btn secondary" type="button" id="ed-save">Enregistrer</button>
-      <button class="btn secondary" type="button" id="ed-pdf">Télécharger PDF</button>
-      <button class="btn" type="button" id="ed-finaliser">Finaliser (CGV)</button>
-    </div>
-  </div>
-</div>
-
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
