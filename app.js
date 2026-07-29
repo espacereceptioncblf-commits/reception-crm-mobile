@@ -444,7 +444,8 @@ function renderDashboard() {
   const salut = (h >= 5 && h < 18) ? "Bonjour" : "Bonsoir";
   let dateStr = new Date().toLocaleDateString("fr-FR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
   dateStr = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
-  document.getElementById("dash-greeting").textContent = `${salut} CBLF — ${dateStr}`;
+  document.getElementById("dash-greeting-title").textContent = `${salut} CBLF !`;
+  document.getElementById("dash-greeting").textContent = dateStr;
   const prospectsActifs = cache.contacts.filter(c => c.categorie === "Prospect").length;
   const devisEnAttente = cache.devis.filter(d => d.statut === "En attente").length;
   const facturesImpayees = cache.factures.filter(f => ["Envoyée", "En retard", "Partiellement payée"].includes(f.statut)).length;
@@ -453,21 +454,21 @@ function renderDashboard() {
   const todosOuvertes = cache.todos.filter(t => t.statut !== "Terminé").length;
 
   const cards = [
-    ["target", prospectsActifs, "Prospects actifs", () => goToFilter("contacts", "contact-filter-categorie", "Prospect")],
-    ["file-text", devisEnAttente, "Devis en attente", () => goToFilter("devis", "devis-filter-statut", "En attente")],
-    ["receipt", facturesImpayees, "Factures impayées", () => goToFilter("factures", "facture-filter-statut", "Envoyée")],
-    ["check-square", rdvAvenir, "RDV à venir", () => showPage("todo")],
-    ["calendar", evenementsAvenir, "Évènements à venir", () => showPage("evenements")],
-    ["check", todosOuvertes, "Tâches en cours", () => showPage("todo")],
+    ["target", prospectsActifs, "Prospects actifs", "var(--info)", () => goToFilter("contacts", "contact-filter-categorie", "Prospect")],
+    ["file-text", devisEnAttente, "Devis en attente", "var(--accent)", () => goToFilter("devis", "devis-filter-statut", "En attente")],
+    ["receipt", facturesImpayees, "Factures impayées", "var(--warning)", () => goToFilter("factures", "facture-filter-statut", "Envoyée")],
+    ["check-square", rdvAvenir, "RDV à venir", "var(--success)", () => showPage("todo")],
+    ["calendar", evenementsAvenir, "Évènements à venir", "var(--info)", () => showPage("evenements")],
+    ["check", todosOuvertes, "Tâches en cours", "var(--success)", () => showPage("todo")],
   ];
   const wrap = document.getElementById("dash-cards");
   wrap.innerHTML = cards.map((c, i) => `
     <div class="stat-card clickable" data-i="${i}">
-      <div style="color:var(--accent);">${icon(c[0], 22)}</div>
+      <div class="icon-badge" style="background:${c[3]};">${icon(c[0], 18)}</div>
       <div class="num">${c[1]}</div>
       <div class="label">${c[2]}</div>
     </div>`).join("");
-  wrap.querySelectorAll(".stat-card").forEach(el => el.addEventListener("click", () => cards[Number(el.dataset.i)][3]()));
+  wrap.querySelectorAll(".stat-card").forEach(el => el.addEventListener("click", () => cards[Number(el.dataset.i)][4]()));
 
   // Aperçu des tâches (échéance du jour en rouge)
   const todos = cache.todos.filter(t => t.statut !== "Terminé")

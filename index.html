@@ -32,11 +32,11 @@
 
   /* ---------- AUTH SCREEN ---------- */
   #auth-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--sidebar);}
-  .auth-box{background:var(--card);padding:36px 40px;border-radius:10px;width:340px;max-width:90vw;}
+  .auth-box{background:var(--card);padding:36px 40px;border-radius:20px;width:340px;max-width:90vw;}
   .auth-box h1{font-size:20px;margin:0 0 4px;color:var(--text);}
   .auth-box p.sub{color:var(--muted);font-size:13px;margin:0 0 20px;}
-  .auth-box input{width:100%;padding:10px 12px;margin-bottom:12px;border:1px solid var(--border);border-radius:6px;font-size:14px;}
-  .auth-box button.primary{width:100%;padding:11px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:bold;}
+  .auth-box input{width:100%;padding:10px 14px;margin-bottom:12px;border:1px solid var(--border);border-radius:12px;font-size:14px;}
+  .auth-box button.primary{width:100%;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:999px;font-size:14px;font-weight:bold;}
   .auth-box button.primary:hover{background:var(--accent-dark);}
   .auth-switch{text-align:center;margin-top:14px;font-size:13px;color:var(--muted);}
   .auth-switch a{color:var(--accent);cursor:pointer;text-decoration:none;font-weight:bold;}
@@ -48,9 +48,9 @@
   .layout{display:flex;min-height:100vh;}
   .sidebar{width:230px;background:var(--sidebar);flex-shrink:0;padding:24px 0 20px;display:flex;flex-direction:column;}
   .sidebar .logo{color:#fff;font-size:15px;font-weight:bold;padding:0 20px 20px;line-height:1.3;display:flex;align-items:center;gap:10px;}
-  .logo-badge{background:var(--accent);width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .logo-badge{background:var(--accent);width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
   .nav-section-label{color:#6D7280;font-size:10.5px;font-weight:bold;text-transform:uppercase;letter-spacing:.06em;padding:16px 20px 6px;}
-  .nav-item{color:var(--sidebar-text);padding:10px 20px;font-size:13.5px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:11px;}
+  .nav-item{color:var(--sidebar-text);padding:10px 14px;font-size:13.5px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:11px;margin:2px 10px;border-radius:10px;}
   .nav-item svg{opacity:.8;}
   .nav-item.active svg{opacity:1;}
   .nav-item:hover{background:var(--sidebar-active);}
@@ -62,6 +62,11 @@
   .main{flex:1;min-width:0;display:flex;flex-direction:column;}
   .toolbar{padding:18px 28px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
   .toolbar .lbl{color:var(--muted);font-size:12.5px;margin-right:4px;}
+  .topbar-search-row{padding:20px 28px 0;}
+  .topbar-search{width:100%;max-width:640px;display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:999px;padding:11px 18px;color:var(--muted);font-size:13.5px;cursor:pointer;text-align:left;}
+  .topbar-search:hover{border-color:var(--accent);}
+  .topbar-search span:nth-child(2){flex:1;}
+  .topbar-search-kbd{font-size:11px;opacity:.55;border:1px solid var(--border);border-radius:5px;padding:1px 6px;}
   .shortcut-btn{background:var(--card);border:1px solid var(--border);padding:9px 14px;border-radius:6px;font-size:12.5px;color:var(--text);}
   .shortcut-btn:hover{border-color:var(--accent);color:var(--accent-dark);}
 
@@ -74,30 +79,31 @@
 
   /* cards / dashboard */
   .cards-row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:22px;}
-  .stat-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 18px;min-width:150px;flex:1;}
+  .stat-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px 20px;min-width:150px;flex:1;}
   .stat-card.clickable{cursor:pointer;transition:.15s;}
   .stat-card.clickable:hover{border-color:var(--accent);transform:translateY(-2px);}
-  .stat-card .num{font-size:26px;font-weight:bold;}
+  .stat-card .icon-badge{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;color:#fff;margin-bottom:12px;}
+  .stat-card .num{font-size:26px;font-weight:800;}
   .stat-card .label{font-size:12px;color:var(--muted);margin-top:2px;}
-  .panel{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin-bottom:20px;}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px 22px;margin-bottom:20px;}
   .panel h3{margin:0 0 12px;font-size:14px;}
 
   /* toolbar for pages */
   .page-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px;}
-  .btn{border:none;border-radius:6px;padding:9px 16px;font-size:13px;font-weight:bold;background:var(--accent);color:#fff;display:inline-flex;align-items:center;gap:7px;}
-  .shortcut-btn{display:inline-flex;align-items:center;gap:6px;}
+  .btn{border:none;border-radius:999px;padding:10px 18px;font-size:13px;font-weight:bold;background:var(--accent);color:#fff;display:inline-flex;align-items:center;gap:7px;}
+  .shortcut-btn{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:9px 16px;}
   .btn:hover{background:var(--accent-dark);}
   .btn.secondary{background:var(--card);color:var(--text);border:1px solid var(--border);font-weight:normal;}
   .btn.secondary:hover{border-color:var(--accent);}
   .btn.danger{background:var(--danger);}
-  select.filter,input.filter{padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;}
+  select.filter,input.filter{padding:9px 12px;border:1px solid var(--border);border-radius:999px;font-size:12.5px;}
 
   /* table */
-  table.data{width:100%;border-collapse:collapse;background:var(--card);border-radius:10px;overflow:hidden;border:1px solid var(--border);}
-  table.data th{background:#EFEEE9;text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);padding:10px 12px;}
-  table.data td{padding:10px 12px;font-size:13px;border-top:1px solid var(--border);vertical-align:top;}
+  table.data{width:100%;border-collapse:collapse;background:var(--card);border-radius:16px;overflow:hidden;border:1px solid var(--border);}
+  table.data th{background:#EFEEE9;text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);padding:12px 14px;}
+  table.data td{padding:11px 14px;font-size:13px;border-top:1px solid var(--border);vertical-align:top;}
   table.data tr:hover td{background:#FAFAF8;}
-  .badge{display:inline-block;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:bold;}
+  .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:bold;}
   .row-actions{white-space:nowrap;}
   .row-actions button{background:none;border:none;font-size:14px;padding:4px 5px;color:var(--muted);display:inline-flex;align-items:center;justify-content:center;border-radius:5px;}
   .row-actions button:hover{background:color-mix(in srgb, var(--accent) 12%, transparent);}
@@ -108,12 +114,12 @@
   .empty-state .es-msg{font-size:13.5px;color:var(--muted);}
 
   .kanban-board{display:flex;gap:14px;overflow-x:auto;padding-bottom:10px;align-items:flex-start;}
-  .kanban-col{background:#EFEEE9;border-radius:10px;padding:10px;min-width:250px;flex:0 0 250px;}
+  .kanban-col{background:#EFEEE9;border-radius:16px;padding:10px;min-width:250px;flex:0 0 250px;}
   :root[data-theme="dark"] .kanban-col{background:#1A1C22;}
   .kanban-col h4{margin:2px 6px 10px;font-size:12.5px;display:flex;justify-content:space-between;align-items:center;color:var(--text);}
   .kanban-col h4 span{background:var(--card);border-radius:10px;padding:1px 8px;font-size:11px;color:var(--muted);}
   .kanban-col.drag-over{outline:2px dashed var(--accent);}
-  .kanban-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:grab;font-size:12.5px;}
+  .kanban-card{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:10px 12px;margin-bottom:8px;cursor:grab;font-size:12.5px;}
   .kanban-card:active{cursor:grabbing;}
   .kanban-card .kc-name{font-weight:bold;margin-bottom:3px;}
   .kanban-card .kc-date{color:var(--muted);font-size:11.5px;}
@@ -137,11 +143,11 @@
   /* modal */
   .modal-overlay{display:none;position:fixed;inset:0;background:rgba(20,20,20,.45);align-items:center;justify-content:center;z-index:65;padding:20px;}
   .modal-overlay.open{display:flex;}
-  .modal-box{background:var(--card);border-radius:10px;width:540px;max-width:100%;max-height:90vh;overflow-y:auto;padding:24px 26px;}
+  .modal-box{background:var(--card);border-radius:18px;width:540px;max-width:100%;max-height:90vh;overflow-y:auto;padding:26px 28px;}
   .modal-box h2{margin:0 0 18px;font-size:17px;}
   .field{margin-bottom:13px;}
   .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:bold;}
-  .field input,.field select,.field textarea{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:6px;font-size:13.5px;}
+  .field input,.field select,.field textarea{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:10px;font-size:13.5px;}
   .field textarea{resize:vertical;min-height:60px;}
   .field .inline-checks{display:flex;gap:16px;flex-wrap:wrap;}
   .field .inline-checks label{font-weight:normal;color:var(--text);display:flex;align-items:center;gap:6px;}
@@ -153,7 +159,7 @@
   .cal-header button{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:6px 12px;}
   .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;}
   .cal-dow{text-align:center;font-size:11px;color:var(--muted);font-weight:bold;padding:4px 0;}
-  .cal-cell{background:var(--card);border:1px solid var(--border);border-radius:6px;min-height:64px;padding:6px 8px;cursor:pointer;font-size:12px;}
+  .cal-cell{background:var(--card);border:1px solid var(--border);border-radius:11px;min-height:64px;padding:6px 8px;cursor:pointer;font-size:12px;}
   .cal-cell.empty{background:transparent;border:none;cursor:default;}
   .cal-cell.today{background:var(--accent);color:#fff;}
   .cal-cell.selected{outline:2px solid var(--accent);}
@@ -244,7 +250,7 @@
     }
     .sidebar.open{transform:translateX(0);}
     .sidebar .logo{display:flex;}
-    .nav-item{padding:10px 20px;font-size:13.5px;}
+    .nav-item{padding:10px 14px;font-size:13.5px;margin:2px 10px;}
     .sidebar-footer{margin-top:auto;padding:14px 20px 0;border-top:1px solid #343945;}
 
     .sidebar-overlay{
@@ -327,11 +333,14 @@
     </div>
 
     <div class="main">
-      <div class="toolbar">
-        <button id="global-search-btn" class="shortcut-btn" style="margin-right:6px;color:var(--muted);">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          Rechercher <span style="opacity:.5;font-size:11px;margin-left:4px;">Ctrl K</span>
+      <div class="topbar-search-row">
+        <button id="global-search-btn" class="topbar-search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span>Rechercher un contact, un devis, un évènement…</span>
+          <span class="topbar-search-kbd">Ctrl K</span>
         </button>
+      </div>
+      <div class="toolbar">
         <span class="lbl">Raccourcis :</span>
         <button class="shortcut-btn" id="sc-devis"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouveau devis</button>
         <button class="shortcut-btn" id="sc-facture"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouvelle facture</button>
@@ -345,8 +354,8 @@
 
         <!-- DASHBOARD -->
         <div class="page" id="page-dashboard">
-          <div class="page-title">Dashboard</div>
-          <div id="dash-greeting" style="color:var(--muted);font-size:13.5px;margin:-10px 0 18px;"></div>
+          <div id="dash-greeting-title" style="font-size:26px;font-weight:800;margin:4px 0 2px;"></div>
+          <div id="dash-greeting" style="color:var(--muted);font-size:13.5px;margin:0 0 20px;"></div>
           <div class="cards-row" id="dash-cards"></div>
           <div class="panel">
             <h3><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> Aperçu des tâches</h3>
