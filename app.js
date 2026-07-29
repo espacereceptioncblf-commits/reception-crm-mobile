@@ -8,6 +8,69 @@ const SUPABASE_URL = "https://fmstfqzmahhidvyespwk.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZtc3RmcXptYWhoaWR2eWVzcHdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ4ODg4OTEsImV4cCI6MjEwMDQ2NDg5MX0.ObX6Xpg_ugP70d8Jf6WJNhsXezXUS8j7qIAo6ZQIqg4";
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// ---- Jeu d'icônes SVG (style trait fin, remplace les emojis) ----
+const ICON_PATHS = {
+  home: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><path d="M9 22V12h6v10"/>',
+  "check-square": '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+  target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+  calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+  "calendar-days": '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>',
+  user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  "file-text": '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
+  receipt: '<path d="M4 2h16v20l-3-2-3 2-3-2-3 2-3-2-1 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/>',
+  tag: '<path d="M20.59 13.41L11 3.83A2 2 0 0 0 9.59 3H4a1 1 0 0 0-1 1v5.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.82 0l4.6-4.6a2 2 0 0 0 0-2.82z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
+  package: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
+  briefcase: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
+  book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+  plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  edit: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/>',
+  trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  clipboard: '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/>',
+  folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  printer: '<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
+  x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  menu: '<line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>',
+  sun: '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>',
+  moon: '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
+  "log-out": '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
+  inbox: '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+  paperclip: '<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  "alert-triangle": '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  mic: '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>',
+};
+function icon(name, size) {
+  size = size || 16;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;flex-shrink:0;">${ICON_PATHS[name] || ""}</svg>`;
+}
+
+// ---- Thème clair / sombre ----
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  try { localStorage.setItem("crm-theme", theme); } catch (e) {}
+  const lbl = document.getElementById("theme-toggle-label");
+  if (lbl) lbl.textContent = theme === "dark" ? "Mode clair" : "Mode sombre";
+  const btn = document.getElementById("theme-toggle-btn");
+  if (btn) btn.querySelector("svg").innerHTML = theme === "dark"
+    ? ICON_PATHS.sun
+    : ICON_PATHS.moon;
+}
+function toggleTheme() {
+  const current = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  applyTheme(current === "dark" ? "light" : "dark");
+}
+function initTheme() {
+  let saved = null;
+  try { saved = localStorage.getItem("crm-theme"); } catch (e) {}
+  if (!saved) saved = (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+  applyTheme(saved);
+}
+initTheme();
+
 // ---- 2) CONSTANTES ----
 const TYPES_EVENEMENT = ["Mariage", "Anniversaire", "Baptême", "Séminaire"];
 const STATUTS_PROSPECT = ["Nouveau", "Contacté", "Qualifié", "Devis envoyé", "Converti", "Perdu"];
@@ -105,7 +168,17 @@ function showToast(msg) {
 }
 function badge(text, color) {
   if (!text) return "";
-  return `<span class="badge" style="background:${color || "var(--muted)"}">${text}</span>`;
+  const c = color || "var(--muted)";
+  return `<span class="badge" style="background:color-mix(in srgb, ${c} 16%, var(--card));color:${c};border:1px solid color-mix(in srgb, ${c} 35%, transparent);">${text}</span>`;
+}
+function emptyState(colspan, message, ctaLabel, ctaOnclick) {
+  return `<tr class="empty-row"><td colspan="${colspan}">
+    <div class="empty-state">
+      ${icon("inbox", 30)}
+      <div class="es-msg">${message}</div>
+      ${ctaOnclick ? `<button class="btn" onclick="${ctaOnclick}">${icon("plus", 14)} ${ctaLabel}</button>` : ""}
+    </div>
+  </td></tr>`;
 }
 function contactLabel(c) {
   if (!c) return "—";
@@ -205,10 +278,12 @@ async function onLoggedIn(user) {
   currentUser = user;
   document.getElementById("auth-screen").style.display = "none";
   document.getElementById("app-screen").style.display = "block";
+  document.getElementById("app-loading").classList.add("open");
   document.getElementById("user-email-lbl").textContent = user.email;
   await refreshCache();
   await autoExpireDevis();
   showPage("dashboard");
+  document.getElementById("app-loading").classList.remove("open");
 }
 async function handleLogout() {
   await sb.auth.signOut();
@@ -266,9 +341,9 @@ function effectivePriorite(t) {
   return t.priorite || "Normale";
 }
 function todoLieALabel(t) {
-  if (t.evenement_id) { const e = findEvenement(t.evenement_id); return e ? "🎉 " + (eventLabel(e)) : "—"; }
-  if (t.contact_id) { const c = findContact(t.contact_id); return c ? "👤 " + contactLabel(c) : "—"; }
-  if (t.commande_id) { const c = findCommande(t.commande_id); return c ? "📦 " + (c.article || ("Commande #" + c.id)) : "—"; }
+  if (t.evenement_id) { const e = findEvenement(t.evenement_id); return e ? (icon("calendar",13) + " " + eventLabel(e)) : "—"; }
+  if (t.contact_id) { const c = findContact(t.contact_id); return c ? (icon("user",13) + " " + contactLabel(c)) : "—"; }
+  if (t.commande_id) { const c = findCommande(t.commande_id); return c ? (icon("package", 13) + " " + (c.article || ("Commande #" + c.id))) : "—"; }
   return t.categorie || "—";
 }
 function eventDateLabel(e) {
@@ -292,17 +367,17 @@ function renderDashboard() {
   const todosOuvertes = cache.todos.filter(t => t.statut !== "Terminé").length;
 
   const cards = [
-    ["🎯", prospectsActifs, "Prospects actifs", () => goToFilter("contacts", "contact-filter-categorie", "Prospect")],
-    ["📄", devisEnAttente, "Devis en attente", () => goToFilter("devis", "devis-filter-statut", "En attente")],
-    ["🧾", facturesImpayees, "Factures impayées", () => goToFilter("factures", "facture-filter-statut", "Envoyée")],
-    ["🤝", rdvAvenir, "RDV à venir", () => showPage("todo")],
-    ["🎉", evenementsAvenir, "Évènements à venir", () => showPage("evenements")],
-    ["✅", todosOuvertes, "Tâches en cours", () => showPage("todo")],
+    ["target", prospectsActifs, "Prospects actifs", () => goToFilter("contacts", "contact-filter-categorie", "Prospect")],
+    ["file-text", devisEnAttente, "Devis en attente", () => goToFilter("devis", "devis-filter-statut", "En attente")],
+    ["receipt", facturesImpayees, "Factures impayées", () => goToFilter("factures", "facture-filter-statut", "Envoyée")],
+    ["check-square", rdvAvenir, "RDV à venir", () => showPage("todo")],
+    ["calendar", evenementsAvenir, "Évènements à venir", () => showPage("evenements")],
+    ["check", todosOuvertes, "Tâches en cours", () => showPage("todo")],
   ];
   const wrap = document.getElementById("dash-cards");
   wrap.innerHTML = cards.map((c, i) => `
     <div class="stat-card clickable" data-i="${i}">
-      <div style="font-size:20px;">${c[0]}</div>
+      <div style="color:var(--accent);">${icon(c[0], 22)}</div>
       <div class="num">${c[1]}</div>
       <div class="label">${c[2]}</div>
     </div>`).join("");
@@ -410,10 +485,10 @@ function renderTodo() {
       <td class="${echClass}">${fmtDateFR(t.date_echeance) || "—"}</td>
       <td>${badge(t.statut, STATUT_COLORS[t.statut])}</td>
       <td class="row-actions">
-        <button onclick="openTodoDialog(${t.id})">✎</button>
-        <button onclick="confirmDelete('todos', ${t.id}, renderTodo)">🗑</button>
+        <button onclick="openTodoDialog(${t.id})">${icon("edit",14)}</button>
+        <button onclick="confirmDelete('todos', ${t.id}, renderTodo)">${icon("trash",14)}</button>
       </td></tr>`;
-  }).join("") : `<tr class="empty-row"><td colspan="6">Aucune tâche</td></tr>`;
+  }).join("") : emptyState(6, "Aucune tâche pour l'instant", "Ajouter ta première tâche", "openTodoDialog(null)");
 
   const done = [...cache.todos].filter(t => t.statut === "Terminé")
     .sort((a, b) => (b.date_echeance || "").localeCompare(a.date_echeance || ""));
@@ -424,8 +499,8 @@ function renderTodo() {
       <td>${badge(effectivePriorite(t), STATUT_COLORS[effectivePriorite(t)])}</td>
       <td>${fmtDateFR(t.date_echeance) || "—"}</td>
       <td class="row-actions">
-        <button onclick="openTodoDialog(${t.id})">✎</button>
-        <button onclick="confirmDelete('todos', ${t.id}, renderTodo)">🗑</button>
+        <button onclick="openTodoDialog(${t.id})">${icon("edit",14)}</button>
+        <button onclick="confirmDelete('todos', ${t.id}, renderTodo)">${icon("trash",14)}</button>
       </td></tr>`).join("") : `<tr class="empty-row"><td colspan="5">Aucune tâche terminée</td></tr>`;
 }
 
@@ -468,13 +543,13 @@ function renderSuivi() {
       <td>${dateTxt || "—"}</td>
       <td>${e.derniere_action || "—"}</td>
       <td>${tache ? tache.titre : "—"}</td>
-      <td class="row-actions"><button title="Fiche récap" onclick="openEventRecap(${e.id})">📋</button></td>
+      <td class="row-actions"><button title="Fiche récap" onclick="openEventRecap(${e.id})">${icon("clipboard",14)}</button></td>
       <td>${badge(e.statut, STATUT_COLORS[e.statut])}</td>
       <td>${dev ? badge(dev.statut, STATUT_COLORS[dev.statut]) : "—"}</td>
       <td>${fac ? badge(fac.statut, STATUT_COLORS[fac.statut]) : "—"}</td>
-      <td class="row-actions"><button onclick="openEvenementDialog(${e.id})">✎</button></td>
+      <td class="row-actions"><button onclick="openEvenementDialog(${e.id})">${icon("edit",14)}</button></td>
     </tr>`;
-  }).join("") : `<tr class="empty-row"><td colspan="9">Aucun dossier — crée un évènement</td></tr>`;
+  }).join("") : emptyState(9, "Aucun dossier pour l'instant", "Créer un évènement", "openEvenementDialog(null)");
 }
 
 function openEventRecap(id) {
@@ -490,7 +565,7 @@ function openEventRecap(id) {
   const today = todayStr();
   const manuel = (e.historique || []).map(h => ({ date: h.date, texte: h.texte }));
   const rdvPasses = cache.rdv.filter(r => r.evenement_id === e.id && r.date_rdv && r.date_rdv < today)
-    .map(r => ({ date: r.date_rdv, texte: "🤝 RDV" + (r.objet ? " — " + r.objet : "") + (r.notes ? " (" + r.notes + ")" : "") }));
+    .map(r => ({ date: r.date_rdv, texte: (icon("users",13) + " RDV") + (r.objet ? " — " + r.objet : "") + (r.notes ? " (" + r.notes + ")" : "") }));
   const historique = [...manuel, ...rdvPasses].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
   const line = (l, v) => `<tr><td style="color:var(--muted);width:42%;">${l}</td><td>${v || "—"}</td></tr>`;
@@ -512,23 +587,23 @@ function openEventRecap(id) {
       ${line("Prochain RDV", fmtDateFR(e.prochain_rdv))}
     </tbody></table>
     <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px;">
-      <h3 style="font-size:14px;margin:0;">🕓 Historique des actions</h3>
-      <button class="btn secondary" type="button" onclick="addHistoriqueEntry(${e.id})">＋ Ajouter</button>
+      <h3 style="font-size:14px;margin:0;">${icon("clock",14)} Historique des actions</h3>
+      <button class="btn secondary" type="button" onclick="addHistoriqueEntry(${e.id})">${icon("plus",13)} Ajouter</button>
     </div>
     <table class="data" style="margin-bottom:16px;"><tbody>${historique.length ? historique.map(h => `<tr><td style="white-space:nowrap;color:var(--muted);width:110px;">${fmtDateFR(h.date)}</td><td>${h.texte}</td></tr>`).join("") : `<tr class="empty-row"><td colspan="2">Aucune entrée</td></tr>`}</tbody></table>
     <div style="display:flex;justify-content:space-between;align-items:center;margin:0 0 8px;">
-      <h3 style="font-size:14px;margin:0;">📝 Notes</h3>
-      <button class="btn secondary" type="button" onclick="openNotesPanel('Notes — ' + '${(contactLabel(c) || 'évènement').replace(/'/g, "\\'")}', 'evenements', ${e.id}, ${JSON.stringify(e.notes || "")}, () => openEventRecap(${e.id}))">✎ Ouvrir en grand</button>
+      <h3 style="font-size:14px;margin:0;">${icon("edit",14)} Notes</h3>
+      <button class="btn secondary" type="button" onclick="openNotesPanel('Notes — ' + '${(contactLabel(c) || 'évènement').replace(/'/g, "\\'")}', 'evenements', ${e.id}, ${JSON.stringify(e.notes || "")}, () => openEventRecap(${e.id}))">${icon("edit",13)} Ouvrir en grand</button>
     </div>
     <div style="font-size:14px;line-height:1.5;white-space:pre-wrap;background:#FAFAF8;border:1px solid var(--border);border-radius:8px;padding:12px;min-height:50px;">${e.notes || "—"}</div>
-    <h3 style="font-size:14px;margin:16px 0 8px;">✅ Tâches liées</h3>
+    <h3 style="font-size:14px;margin:16px 0 8px;">${icon("check-square",14)} Tâches liées</h3>
     <table class="data"><tbody>${taches.length ? taches.map(t => `<tr><td>${t.titre}</td><td>${badge(t.statut, STATUT_COLORS[t.statut])}</td></tr>`).join("") : `<tr class="empty-row"><td colspan="2">Aucune</td></tr>`}</tbody></table>`;
   showInfoModal("Fiche récap évènement", html);
   const oldBtn = document.getElementById("modal-print-btn");
   if (oldBtn) oldBtn.remove();
   const printBtn = document.createElement("button");
   printBtn.id = "modal-print-btn";
-  printBtn.className = "btn secondary"; printBtn.type = "button"; printBtn.textContent = "🖨 Imprimer";
+  printBtn.className = "btn secondary"; printBtn.type = "button"; printBtn.textContent = icon("printer",14) + " Imprimer";
   printBtn.onclick = () => printEventRecap(e.id);
   document.getElementById("modal-cancel").insertAdjacentElement("beforebegin", printBtn);
 }
@@ -591,12 +666,12 @@ function renderContacts() {
       <td>${c.telephone || "—"}</td>
       <td>${c.provenance || "—"}</td>
       <td class="row-actions">
-        <button title="Historique devis / factures" onclick="openContactHistory(${c.id})">📁</button>
-        <button onclick="openContactDialog(${c.id})">✎</button>
-        <button onclick="confirmDelete('contacts', ${c.id}, renderContacts)">🗑</button>
+        <button title="Historique devis / factures" onclick="openContactHistory(${c.id})">${icon("folder",14)}</button>
+        <button onclick="openContactDialog(${c.id})">${icon("edit",14)}</button>
+        <button onclick="confirmDelete('contacts', ${c.id}, renderContacts)">${icon("trash",14)}</button>
         <button title="Fiche contact" onclick="openContactFiche(${c.id})">⋯</button>
       </td>
-    </tr>`).join("") : `<tr class="empty-row"><td colspan="7">Aucun contact</td></tr>`;
+    </tr>`).join("") : emptyState(7, "Aucun contact pour l'instant", "Ajouter ton premier contact", "openContactDialog(null)");
 }
 
 function openContactFiche(id) {
@@ -615,7 +690,7 @@ function openContactFiche(id) {
       ${line("Provenance", c.provenance)}
       ${line("Type d'évènement d'intérêt", c.type_evenement_interet)}
     </tbody></table>
-    <h3 style="font-size:14px;margin:16px 0 8px;">📝 Notes</h3>
+    <h3 style="font-size:14px;margin:16px 0 8px;">${icon("edit",14)} Notes</h3>
     <div style="font-size:14px;line-height:1.5;white-space:pre-wrap;background:#FAFAF8;border:1px solid var(--border);border-radius:8px;padding:12px;min-height:50px;">${c.notes || "—"}</div>`;
   showInfoModal("Fiche contact", html);
 }
@@ -674,7 +749,7 @@ function renderDevis() {
   document.getElementById("devis-last").innerHTML = last ? `Dernier devis créé : <strong>${last}</strong>` : "Aucun devis pour l'instant.";
   const expiredCount = cache.devis.filter(d => d.statut === "Expiré").length;
   document.getElementById("devis-warn").innerHTML = expiredCount
-    ? `<div class="warn-banner">⚠️ ${expiredCount} devis ${expiredCount > 1 ? "sont expirés" : "est expiré"} (date de validité dépassée). Pense à les relancer ou les renouveler.</div>` : "";
+    ? `<div class="warn-banner">${icon("alert-triangle",14)} ${expiredCount} devis ${expiredCount > 1 ? "sont expirés" : "est expiré"} (date de validité dépassée). Pense à les relancer ou les renouveler.</div>` : "";
 
   const search = (document.getElementById("devis-search").value || "").toLowerCase();
   const filter = document.getElementById("devis-filter-statut").value;
@@ -686,19 +761,19 @@ function renderDevis() {
   tbody.innerHTML = rows.length ? rows.map(d => {
     const e = devisEvent(d);
     return `<tr>
-      <td>${d.numero || "—"}${d.finalise ? " ✅" : ""}</td>
+      <td>${d.numero || "—"}${d.finalise ? " " + icon("check", 12) : ""}</td>
       <td>${e ? eventLabel(e) : "—"}</td>
       <td><input type="date" value="${(d.date_creation || "").slice(0, 10)}" onchange="updateDevisDateCreation(${d.id}, this.value)" style="border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-size:12px;"></td>
       <td>${d.montant_ttc ? d.montant_ttc + " €" : "—"}</td>
       <td>${badge(d.statut, STATUT_COLORS[d.statut])}</td>
       <td class="row-actions">
-        <button title="Aperçu rapide" onclick="generateDevisPDF(${d.id}, true)">👁</button>
-        <button title="Éditer le devis" onclick="openDevisEditor(${d.id})">✎</button>
-        <button title="Télécharger le PDF" onclick="generateDevisPDF(${d.id})">⬇</button>
-        <button title="Créer une facture" onclick="createFactureFromDevis(${d.id})">🧾</button>
-        <button onclick="confirmDelete('devis', ${d.id}, renderDevis)">🗑</button>
+        <button title="Aperçu rapide" onclick="generateDevisPDF(${d.id}, true)">${icon("eye",14)}</button>
+        <button title="Éditer le devis" onclick="openDevisEditor(${d.id})">${icon("edit",14)}</button>
+        <button title="Télécharger le PDF" onclick="generateDevisPDF(${d.id})">${icon("download",14)}</button>
+        <button title="Créer une facture" onclick="createFactureFromDevis(${d.id})">${icon("receipt",14)}</button>
+        <button onclick="confirmDelete('devis', ${d.id}, renderDevis)">${icon("trash",14)}</button>
       </td></tr>`;
-  }).join("") : `<tr class="empty-row"><td colspan="6">Aucun devis</td></tr>`;
+  }).join("") : emptyState(6, "Aucun devis pour l'instant", "Créer ton premier devis", "openDevisDialog(null)");
 }
 async function updateDevisDateCreation(id, val) {
   if (!val) return;
@@ -782,7 +857,7 @@ function renderEditorLines() {
       <td><select data-k="tva">${TVA_DEVIS.map(t => `<option value="${t}" ${Number(l.tva) === t ? "selected" : ""}>${t}%</option>`).join("")}</select></td>
       <td class="ro" data-ro="tva"></td>
       <td class="ro" data-ro="ttc"></td>
-      <td><button class="del" title="Supprimer" onclick="removeEditorLine(${i})">✕</button></td>
+      <td><button class="del" title="Supprimer" onclick="removeEditorLine(${i})">${icon("x",13)}</button></td>
     </tr>`).join("");
   recomputeEditor();
 }
@@ -1008,7 +1083,7 @@ function renderFactures() {
   const tbody = document.getElementById("facture-tbody");
   tbody.innerHTML = rows.length ? rows.map(f => {
     const dev = f.devis_id ? findDevis(f.devis_id) : null;
-    const pdfBtn = f.pdf_path ? `<button title="Voir le PDF joint" onclick="downloadAttachment(findFacture(${f.id}).pdf_path)">📎</button>` : "";
+    const pdfBtn = f.pdf_path ? `<button title="Voir le PDF joint" onclick="downloadAttachment(findFacture(${f.id}).pdf_path)">${icon("paperclip", 14)}</button>` : "";
     return `<tr>
       <td>${f.numero || "—"}</td>
       <td>${contactLabel(findContact(f.contact_id))}</td>
@@ -1017,12 +1092,12 @@ function renderFactures() {
       <td>${f.montant_ttc ? f.montant_ttc + " €" : "—"}</td>
       <td>${badge(f.statut, STATUT_COLORS[f.statut])}</td>
       <td class="row-actions">
-        <button title="Télécharger la facture (PDF)" onclick="generateFacturePDF(${f.id})">⬇</button>
+        <button title="Télécharger la facture (PDF)" onclick="generateFacturePDF(${f.id})">${icon("download",14)}</button>
         ${pdfBtn}
-        <button onclick="openFactureDialog(${f.id})">✎</button>
-        <button onclick="confirmDelete('factures', ${f.id}, renderFactures)">🗑</button>
+        <button onclick="openFactureDialog(${f.id})">${icon("edit",14)}</button>
+        <button onclick="confirmDelete('factures', ${f.id}, renderFactures)">${icon("trash",14)}</button>
       </td></tr>`;
-  }).join("") : `<tr class="empty-row"><td colspan="7">Aucune facture — crée-la ici ou depuis un devis (🧾)</td></tr>`;
+  }).join("") : emptyState(7, "Aucune facture pour l'instant", "Créer une facture", "openFactureDialog(null)");
 }
 function factureFields(row) {
   return [
@@ -1106,13 +1181,13 @@ function openContactHistory(contactId) {
   const c = findContact(contactId);
   const devs = cache.devis.filter(d => { const cc = devisContact(d); return cc && cc.id === contactId; });
   const facs = cache.factures.filter(f => f.contact_id === contactId);
-  const devHtml = devs.length ? devs.map(d => `<tr><td>${d.numero || "—"}</td><td>${fmtDateFR(devisDateEvt(d))}</td><td>${d.montant_ttc ? d.montant_ttc + " €" : "—"}</td><td>${badge(d.statut, STATUT_COLORS[d.statut])}</td><td class="row-actions"><button onclick="generateDevisPDF(${d.id})">⬇</button></td></tr>`).join("") : `<tr class="empty-row"><td colspan="5">Aucun devis</td></tr>`;
-  const facHtml = facs.length ? facs.map(f => `<tr><td>${f.numero || "—"}</td><td>${fmtDateFR(f.date_facture)}</td><td>${f.montant_ttc ? f.montant_ttc + " €" : "—"}</td><td>${badge(f.statut, STATUT_COLORS[f.statut])}</td><td class="row-actions"><button onclick="generateFacturePDF(${f.id})">⬇</button></td></tr>`).join("") : `<tr class="empty-row"><td colspan="5">Aucune facture</td></tr>`;
+  const devHtml = devs.length ? devs.map(d => `<tr><td>${d.numero || "—"}</td><td>${fmtDateFR(devisDateEvt(d))}</td><td>${d.montant_ttc ? d.montant_ttc + " €" : "—"}</td><td>${badge(d.statut, STATUT_COLORS[d.statut])}</td><td class="row-actions"><button onclick="generateDevisPDF(${d.id})">${icon("download",14)}</button></td></tr>`).join("") : `<tr class="empty-row"><td colspan="5">Aucun devis</td></tr>`;
+  const facHtml = facs.length ? facs.map(f => `<tr><td>${f.numero || "—"}</td><td>${fmtDateFR(f.date_facture)}</td><td>${f.montant_ttc ? f.montant_ttc + " €" : "—"}</td><td>${badge(f.statut, STATUT_COLORS[f.statut])}</td><td class="row-actions"><button onclick="generateFacturePDF(${f.id})">${icon("download",14)}</button></td></tr>`).join("") : `<tr class="empty-row"><td colspan="5">Aucune facture</td></tr>`;
   showInfoModal("Historique client", `
     <p style="margin:0 0 14px;color:var(--muted);font-size:13px;">Contact : <strong>${contactLabel(c)}</strong></p>
-    <h3 style="font-size:14px;margin:0 0 8px;">📄 Devis</h3>
+    <h3 style="font-size:14px;margin:0 0 8px;">${icon("file-text", 14)} Devis</h3>
     <table class="data" style="margin-bottom:18px;"><thead><tr><th>N°</th><th>Date évt</th><th>TTC</th><th>Statut</th><th></th></tr></thead><tbody>${devHtml}</tbody></table>
-    <h3 style="font-size:14px;margin:0 0 8px;">🧾 Factures</h3>
+    <h3 style="font-size:14px;margin:0 0 8px;">${icon("receipt",14)} Factures</h3>
     <table class="data"><thead><tr><th>N°</th><th>Date</th><th>TTC</th><th>Statut</th><th></th></tr></thead><tbody>${facHtml}</tbody></table>`);
 }
 
@@ -1155,11 +1230,11 @@ function renderEvenements() {
       <td>${fac ? badge(fac.statut, STATUT_COLORS[fac.statut]) : "—"}</td>
       <td>${e.derniere_action || "—"}</td>
       <td class="row-actions">
-        <button title="Fiche récap" onclick="openEventRecap(${e.id})">📋</button>
-        <button onclick="openEvenementDialog(${e.id})">✎</button>
-        <button onclick="confirmDelete('evenements', ${e.id}, renderEvenements)">🗑</button>
+        <button title="Fiche récap" onclick="openEventRecap(${e.id})">${icon("clipboard",14)}</button>
+        <button onclick="openEvenementDialog(${e.id})">${icon("edit",14)}</button>
+        <button onclick="confirmDelete('evenements', ${e.id}, renderEvenements)">${icon("trash",14)}</button>
       </td></tr>`;
-  }).join("") : `<tr class="empty-row"><td colspan="11">Aucun évènement</td></tr>`;
+  }).join("") : emptyState(11, "Aucun évènement pour l'instant", "Ajouter ton premier évènement", "openEvenementDialog(null)");
 }
 
 function openEvenementDialog(id, defaultDate) {
@@ -1233,7 +1308,7 @@ function renderRdv() {
       <td>${fmtDateFR(r.date_rdv)}</td><td>${r.heure || "—"}</td><td>${r.objet || "—"}</td>
       <td>${contactLabel(findContact(r.contact_id))}</td><td>${badge(r.statut, STATUT_COLORS[r.statut])}</td>
       <td>${r.notes || "—"}</td>
-      <td class="row-actions"><button onclick="openRdvDialog(${r.id})">✎</button><button onclick="confirmDelete('rdv', ${r.id}, renderRdv)">🗑</button></td>
+      <td class="row-actions"><button onclick="openRdvDialog(${r.id})">${icon("edit",14)}</button><button onclick="confirmDelete('rdv', ${r.id}, renderRdv)">${icon("trash",14)}</button></td>
     </tr>`;
 
   const upcoming = rows.filter(r => !r.date_rdv || r.date_rdv >= today)
@@ -1278,8 +1353,8 @@ function renderGrille() {
       <td>${g.nom_presta || "—"}</td><td>${g.details || "—"}</td><td>${g.saison || "Toute l'année"}</td>
       <td><strong>${g.pu_ttc != null ? g.pu_ttc + " €" : "—"}</strong></td><td>${g.tva != null ? g.tva + " %" : "—"}</td>
       <td>${g.montant_tva != null ? g.montant_tva + " €" : "—"}</td><td>${g.pu_ht != null ? g.pu_ht + " €" : "—"}</td>
-      <td class="row-actions"><button onclick="openGrilleDialog(${g.id})">✎</button><button onclick="confirmDelete('grille_tarifaire', ${g.id}, renderGrille)">🗑</button></td>
-    </tr>`).join("") : `<tr class="empty-row"><td colspan="8">Aucune prestation — ajoute ta première ligne</td></tr>`;
+      <td class="row-actions"><button onclick="openGrilleDialog(${g.id})">${icon("edit",14)}</button><button onclick="confirmDelete('grille_tarifaire', ${g.id}, renderGrille)">${icon("trash",14)}</button></td>
+    </tr>`).join("") : emptyState(8, "Ta grille tarifaire est vide", "Ajouter ta première prestation", "openGrilleDialog(null)");
 }
 function openGrilleDialog(id) {
   const row = id ? findGrille(id) : {};
@@ -1332,9 +1407,9 @@ function renderCommande() {
       <td>${e ? eventDateLabel(e) : "—"}</td>
       <td>${fmtDateFR(c.date_commande) || "—"}</td>
       <td>${badge(c.statut, STATUT_COLORS[c.statut])}</td><td>${c.notes || "—"}</td>
-      <td class="row-actions"><button onclick="openCommandeDialog(${c.id})">✎</button><button onclick="confirmDelete('commandes', ${c.id}, renderCommande)">🗑</button></td>
+      <td class="row-actions"><button onclick="openCommandeDialog(${c.id})">${icon("edit",14)}</button><button onclick="confirmDelete('commandes', ${c.id}, renderCommande)">${icon("trash",14)}</button></td>
     </tr>`;
-  }).join("") : `<tr class="empty-row"><td colspan="9">Aucune commande — ajoute ta première commande</td></tr>`;
+  }).join("") : emptyState(9, "Aucune commande pour l'instant", "Ajouter ta première commande", "openCommandeDialog(null)");
 }
 function openCommandeDialog(id) {
   const row = id ? cache.commandes.find(c => c.id === id) : {};
@@ -1467,16 +1542,16 @@ function renderPrestataire() {
     return `<tr>
       <td>${contactLabel(c)}</td>
       <td>${p.type_prestataire || "—"}</td>
-      <td>${p.pdf_path ? `<button title="Voir la fiche" onclick="downloadAttachment('${p.pdf_path}')">📎 Voir</button>` : "—"}</td>
+      <td>${p.pdf_path ? `<button title="Voir la fiche" onclick="downloadAttachment('${p.pdf_path}')">${icon("paperclip",14)} Voir</button>` : "—"}</td>
       <td>${prestataireTarifLabel(p)}</td>
       <td>${cityFromAddress(c && c.adresse) || "—"}</td>
       <td class="row-actions">
-        <button title="Fiche récap" onclick="openPrestataireRecap(${p.id})">📋</button>
-        <button onclick="openPrestataireDialog(${p.id})">✎</button>
-        <button onclick="confirmDelete('prestataires', ${p.id}, renderPrestataire)">🗑</button>
+        <button title="Fiche récap" onclick="openPrestataireRecap(${p.id})">${icon("clipboard",14)}</button>
+        <button onclick="openPrestataireDialog(${p.id})">${icon("edit",14)}</button>
+        <button onclick="confirmDelete('prestataires', ${p.id}, renderPrestataire)">${icon("trash",14)}</button>
       </td>
     </tr>`;
-  }).join("") : `<tr class="empty-row"><td colspan="6">Aucun prestataire — ajoute ta première fiche</td></tr>`;
+  }).join("") : emptyState(6, "Aucun prestataire enregistré", "Créer ta première fiche", "openPrestataireDialog(null)");
 }
 
 function openPrestataireDialog(id) {
@@ -1493,11 +1568,11 @@ function openPrestataireDialog(id) {
     </div>
     <div class="field"><label>Fiche de présentation (PDF)</label>
       <input type="file" id="prest-pdf" accept="application/pdf">
-      ${row.pdf_path ? `<div style="margin-top:6px;"><button type="button" class="btn secondary" onclick="downloadAttachment('${row.pdf_path}')">📎 Voir la fiche actuelle</button></div>` : ""}
+      ${row.pdf_path ? `<div style="margin-top:6px;"><button type="button" class="btn secondary" onclick="downloadAttachment('${row.pdf_path}')">${icon("paperclip",14)} Voir la fiche actuelle</button></div>` : ""}
     </div>
     <div class="field"><label>Prestations</label>
       <div id="prest-lignes"></div>
-      <button type="button" class="btn secondary" id="prest-add-ligne">＋ Ajouter une prestation</button>
+      <button type="button" class="btn secondary" id="prest-add-ligne">${icon("plus",13)} Ajouter une prestation</button>
     </div>`;
 
   openRawModal(id ? "Modifier la fiche prestataire" : "Nouvelle fiche prestataire", html, savePrestataire);
@@ -1523,7 +1598,7 @@ function renderPrestLignes() {
     <div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;">
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;align-items:center;">
         <input data-pi="${i}" data-pk="titre" placeholder="Titre de la prestation" value="${escapeAttr(l.titre || "")}" style="flex:1;min-width:140px;padding:7px 8px;border:1px solid var(--border);border-radius:5px;">
-        <button type="button" onclick="removePrestLigne(${i})" style="background:none;border:none;color:var(--danger);font-size:15px;">✕</button>
+        <button type="button" onclick="removePrestLigne(${i})" style="background:none;border:none;color:var(--danger);font-size:15px;">${icon("x",13)}</button>
       </div>
       <textarea data-pi="${i}" data-pk="description" placeholder="Description" style="width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:5px;min-height:44px;margin-bottom:6px;">${l.description || ""}</textarea>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
@@ -1589,9 +1664,9 @@ function openPrestataireRecap(id) {
       ${line("Tarifs", prestataireTarifLabel(p))}
       ${line("Localisation", cityFromAddress(c && c.adresse))}
     </tbody></table>
-    <h3 style="font-size:14px;margin:0 0 8px;">🎤 Prestations</h3>
+    <h3 style="font-size:14px;margin:0 0 8px;">${icon("mic",14)} Prestations</h3>
     <table class="data" style="margin-bottom:16px;"><thead><tr><th>Titre</th><th>Description</th><th>Prix</th></tr></thead><tbody>${prestHtml}</tbody></table>
-    ${p.pdf_path ? `<button class="btn secondary" type="button" onclick="downloadAttachment('${p.pdf_path}')">📎 Voir la fiche de présentation</button>` : ""}`;
+    ${p.pdf_path ? `<button class="btn secondary" type="button" onclick="downloadAttachment('${p.pdf_path}')">${icon("paperclip",14)} Voir la fiche de présentation</button>` : ""}`;
   showInfoModal("Fiche récap prestataire", html);
 }
 
@@ -1616,12 +1691,12 @@ function renderNotes() {
       <td>${n.titre || "—"}</td>
       <td>${n.categorie || "—"}</td>
       <td class="row-actions">
-        <button title="Éditer" onclick="openNoteEditor(${n.id})">✎</button>
-        <button title="Exporter en PDF" onclick="exportNotePDF(${n.id})">⬇</button>
-        <button title="Voir les liens" onclick="openNoteLiens(${n.id})">🔗</button>
-        <button title="Supprimer" onclick="confirmDelete('notes', ${n.id}, renderNotes)">🗑</button>
+        <button title="Éditer" onclick="openNoteEditor(${n.id})">${icon("edit",14)}</button>
+        <button title="Exporter en PDF" onclick="exportNotePDF(${n.id})">${icon("download",14)}</button>
+        <button title="Voir les liens" onclick="openNoteLiens(${n.id})">${icon("link",14)}</button>
+        <button title="Supprimer" onclick="confirmDelete('notes', ${n.id}, renderNotes)">${icon("trash",14)}</button>
       </td>
-    </tr>`).join("") : `<tr class="empty-row"><td colspan="3">Aucune note — clique sur « Nouvelles notes »</td></tr>`;
+    </tr>`).join("") : emptyState(3, "Aucune note pour l'instant", "Créer ta première note", "openNoteEditor(null)");
 }
 
 function fillNoteCategorieSelect(selected) {
@@ -1630,8 +1705,8 @@ function fillNoteCategorieSelect(selected) {
 }
 function renderNoteLiensList() {
   const el = document.getElementById("note-liens-list");
-  const existing = noteState.liens.map((l, i) => `<span class="lien-chip">📎 ${l.nom} <button type="button" onclick="removeNoteLien(${i})">✕</button></span>`).join("");
-  const pending = noteState.newFiles.map((f, i) => `<span class="lien-chip">🆕 ${f.name} <button type="button" onclick="removeNotePendingFile(${i})">✕</button></span>`).join("");
+  const existing = noteState.liens.map((l, i) => `<span class="lien-chip">${icon("paperclip",12)} ${l.nom} <button type="button" onclick="removeNoteLien(${i})">${icon("x",13)}</button></span>`).join("");
+  const pending = noteState.newFiles.map((f, i) => `<span class="lien-chip">${icon("plus",12)} ${f.name} <button type="button" onclick="removeNotePendingFile(${i})">${icon("x",13)}</button></span>`).join("");
   el.innerHTML = existing + pending || `<span style="font-size:12.5px;color:var(--muted);">Aucun fichier lié pour l'instant.</span>`;
 }
 function removeNoteLien(i) { noteState.liens.splice(i, 1); renderNoteLiensList(); }
@@ -1676,7 +1751,7 @@ function openNoteLiens(id) {
   if (!n) return;
   const liens = Array.isArray(n.liens) ? n.liens : [];
   const html = liens.length
-    ? `<table class="data"><tbody>${liens.map(l => `<tr><td>${l.nom}</td><td class="row-actions"><button onclick="downloadAttachment('${l.path}')">⬇ Télécharger</button></td></tr>`).join("")}</tbody></table>`
+    ? `<table class="data"><tbody>${liens.map(l => `<tr><td>${l.nom}</td><td class="row-actions"><button onclick="downloadAttachment('${l.path}')">${icon("download",13)} Télécharger</button></td></tr>`).join("")}</tbody></table>`
     : `<p style="color:var(--muted);">Aucun fichier lié à cette note.</p>`;
   showInfoModal("Fichiers liés — " + (n.titre || ""), html);
 }
@@ -1699,7 +1774,7 @@ function openNoteCategoriesModal() {
   const html = `<div id="note-cat-list">${renderNoteCategoriesRows()}</div>
     <div style="display:flex;gap:8px;margin-top:12px;">
       <input id="new-cat-input" placeholder="Nouvelle catégorie…" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
-      <button type="button" class="btn secondary" id="new-cat-btn">＋ Ajouter</button>
+      <button type="button" class="btn secondary" id="new-cat-btn">${icon("plus",13)} Ajouter</button>
     </div>`;
   showInfoModal("Catégories de notes", html);
   document.getElementById("new-cat-btn").addEventListener("click", addNoteCategory);
@@ -1710,8 +1785,8 @@ function renderNoteCategoriesRows() {
     <tr>
       <td><input value="${escapeAttr(c.nom)}" data-cat-id="${c.id}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:5px;"></td>
       <td class="row-actions" style="width:90px;">
-        <button title="Renommer" onclick="renameNoteCategory(${c.id})">✎</button>
-        <button title="Supprimer" onclick="deleteNoteCategory(${c.id})">🗑</button>
+        <button title="Renommer" onclick="renameNoteCategory(${c.id})">${icon("edit",14)}</button>
+        <button title="Supprimer" onclick="deleteNoteCategory(${c.id})">${icon("trash",14)}</button>
       </td>
     </tr>`).join("")}</tbody></table>`;
 }
@@ -1939,6 +2014,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("auth-switch-link").addEventListener("click", () => setAuthMode(authMode === "login" ? "signup" : "login"));
   document.getElementById("auth-password").addEventListener("keydown", e => { if (e.key === "Enter") handleAuthSubmit(); });
   document.getElementById("logout-btn").addEventListener("click", handleLogout);
+  document.getElementById("theme-toggle-btn").addEventListener("click", toggleTheme);
   document.getElementById("menu-toggle-btn").addEventListener("click", openMobileMenu);
   document.getElementById("sidebar-overlay").addEventListener("click", closeMobileMenu);
   document.getElementById("notes-panel-close").addEventListener("click", closeNotesPanel);
