@@ -6,7 +6,20 @@
 // ---- 1) CONFIGURATION ----
 const SUPABASE_URL = "https://fmstfqzmahhidvyespwk.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZtc3RmcXptYWhoaWR2eWVzcHdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ4ODg4OTEsImV4cCI6MjEwMDQ2NDg5MX0.ObX6Xpg_ugP70d8Jf6WJNhsXezXUS8j7qIAo6ZQIqg4";
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let rememberMe = true;
+const dynamicAuthStorage = {
+  getItem: (key) => { try { return localStorage.getItem(key) || sessionStorage.getItem(key); } catch (e) { return null; } },
+  setItem: (key, value) => {
+    try {
+      if (rememberMe) { localStorage.setItem(key, value); sessionStorage.removeItem(key); }
+      else { sessionStorage.setItem(key, value); localStorage.removeItem(key); }
+    } catch (e) {}
+  },
+  removeItem: (key) => { try { localStorage.removeItem(key); sessionStorage.removeItem(key); } catch (e) {} },
+};
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { storage: dynamicAuthStorage, persistSession: true, autoRefreshToken: true },
+});
 
 // ---- Jeu d'icônes SVG (style trait fin, remplace les emojis) ----
 const ICON_PATHS = {
@@ -42,6 +55,9 @@ const ICON_PATHS = {
   clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
   "alert-triangle": '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
   mic: '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>',
+  "more-horizontal": '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+  activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+  search: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
 };
 function icon(name, size) {
   size = size || 16;
@@ -174,6 +190,67 @@ function badge(text, color) {
   const c = color || "var(--muted)";
   return `<span class="badge" style="background:color-mix(in srgb, ${c} 16%, var(--card));color:${c};border:1px solid color-mix(in srgb, ${c} 35%, transparent);">${text}</span>`;
 }
+// ---- Export comptable CSV ----
+function exportCSV(filename, headers, rows) {
+  const esc = v => { const s = (v == null ? "" : String(v)).replace(/"/g, '""'); return /[",;\n]/.test(s) ? `"${s}"` : s; };
+  const lines = [headers.map(esc).join(";"), ...rows.map(r => r.map(esc).join(";"))];
+  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast("Export CSV téléchargé");
+}
+function exportDevisCSV() {
+  const rows = cache.devis.map(d => {
+    const e = devisEvent(d), c = devisContact(d);
+    return [d.numero || "", contactLabel(c), e ? eventLabel(e) : "", fmtDateFR((d.date_creation || "").slice(0, 10)), d.montant_ht ?? "", d.montant_ttc ?? "", d.statut || ""];
+  });
+  exportCSV("export_devis.csv", ["Numéro", "Contact", "Évènement", "Date création", "Montant HT", "Montant TTC", "Statut"], rows);
+}
+function exportFacturesCSV() {
+  const rows = cache.factures.map(f => {
+    const c = findContact(f.contact_id), dev = f.devis_id ? findDevis(f.devis_id) : null;
+    return [f.numero || "", contactLabel(c), dev ? (dev.numero || "") : "", fmtDateFR(f.date_facture), f.montant_ht ?? "", f.montant_ttc ?? "", f.statut || ""];
+  });
+  exportCSV("export_factures.csv", ["Numéro", "Contact", "Devis lié", "Date facture", "Montant HT", "Montant TTC", "Statut"], rows);
+}
+
+// ---- Recherche globale (Ctrl/Cmd+K) ----
+function openGlobalSearch() {
+  document.getElementById("gsearch-overlay").classList.add("open");
+  const input = document.getElementById("gsearch-input");
+  input.value = "";
+  renderGlobalSearchResults("");
+  setTimeout(() => input.focus(), 30);
+}
+function closeGlobalSearch() { document.getElementById("gsearch-overlay").classList.remove("open"); }
+function renderGlobalSearchResults(qRaw) {
+  const q = (qRaw || "").trim().toLowerCase();
+  const wrap = document.getElementById("gsearch-results");
+  if (!q) { wrap.innerHTML = `<div class="gsearch-empty">Tape pour rechercher parmi tes contacts, devis et évènements.</div>`; return; }
+
+  const contactsRes = cache.contacts.filter(c => (contactLabel(c) + " " + (c.societe || "") + " " + (c.email || "")).toLowerCase().includes(q)).slice(0, 6);
+  const devisRes = cache.devis.filter(d => ((d.numero || "") + " " + contactLabel(devisContact(d))).toLowerCase().includes(q)).slice(0, 6);
+  const eventsRes = cache.evenements.filter(e => (contactLabel(findContact(e.contact_id)) + " " + (e.type_evenement || "")).toLowerCase().includes(q)).slice(0, 6);
+
+  const groups = [
+    { label: "Contacts", ic: "user", items: contactsRes.map(c => ({ title: contactLabel(c), sub: c.societe || c.email || "", onclick: `closeGlobalSearch();showPage('contacts');openContactDialog(${c.id})` })) },
+    { label: "Devis", ic: "file-text", items: devisRes.map(d => ({ title: d.numero || "Devis", sub: contactLabel(devisContact(d)) + (d.statut ? " · " + d.statut : ""), onclick: `closeGlobalSearch();showPage('devis');openDevisEditor(${d.id})` })) },
+    { label: "Évènements", ic: "calendar", items: eventsRes.map(e => ({ title: eventLabel(e), sub: e.type_evenement || "", onclick: `closeGlobalSearch();showPage('evenements');openEventRecap(${e.id})` })) },
+  ];
+  const total = groups.reduce((s, g) => s + g.items.length, 0);
+  if (!total) { wrap.innerHTML = `<div class="gsearch-empty">Aucun résultat pour « ${qRaw} ».</div>`; return; }
+
+  wrap.innerHTML = groups.filter(g => g.items.length).map(g => `
+    <div class="gsearch-group-label">${g.label}</div>
+    ${g.items.map(it => `<div class="gsearch-item" onclick="${it.onclick}">
+      <span class="gi-icon">${icon(g.ic, 16)}</span>
+      <span><div>${it.title}</div><div class="gi-sub">${it.sub || ""}</div></span>
+    </div>`).join("")}`).join("");
+}
+
 function emptyState(colspan, message, ctaLabel, ctaOnclick) {
   return `<tr class="empty-row"><td colspan="${colspan}">
     <div class="empty-state">
@@ -258,8 +335,8 @@ function setAuthMode(mode) {
   const t = document.getElementById("auth-title"), s = document.getElementById("auth-sub");
   const sub = document.getElementById("auth-submit"), st = document.getElementById("auth-switch-text"), sl = document.getElementById("auth-switch-link");
   document.getElementById("auth-error").style.display = "none";
-  if (mode === "login") { t.textContent = "Connexion"; s.textContent = "Gestion Réception — accède à ton compte"; sub.textContent = "Se connecter"; st.textContent = "Pas encore de compte ?"; sl.textContent = "Créer un compte"; }
-  else { t.textContent = "Créer un compte"; s.textContent = "Gestion Réception — synchronise tes données"; sub.textContent = "Créer mon compte"; st.textContent = "Déjà un compte ?"; sl.textContent = "Se connecter"; }
+  if (mode === "login") { t.textContent = "Connexion"; s.textContent = "Gestion Réception — accède à ton compte"; sub.textContent = "Se connecter"; st.textContent = "Pas encore de compte ?"; sl.textContent = "Créer un compte"; document.getElementById("auth-remember-row").style.display = "flex"; }
+  else { t.textContent = "Créer un compte"; s.textContent = "Gestion Réception — synchronise tes données"; sub.textContent = "Créer mon compte"; st.textContent = "Déjà un compte ?"; sl.textContent = "Se connecter"; document.getElementById("auth-remember-row").style.display = "none"; }
 }
 function authError(msg) { const el = document.getElementById("auth-error"); el.textContent = msg; el.style.display = "block"; }
 async function handleAuthSubmit() {
@@ -267,6 +344,7 @@ async function handleAuthSubmit() {
   const password = document.getElementById("auth-password").value;
   if (!email || !password) { authError("Renseigne un email et un mot de passe."); return; }
   if (authMode === "login") {
+    rememberMe = document.getElementById("auth-remember").checked;
     const { data, error } = await sb.auth.signInWithPassword({ email, password });
     if (error) { authError(error.message); return; }
     onLoggedIn(data.user);
@@ -362,6 +440,11 @@ function eventLabel(e) {
 
 function renderDashboard() {
   const today = todayStr();
+  const h = new Date().getHours();
+  const salut = (h >= 5 && h < 18) ? "Bonjour" : "Bonsoir";
+  let dateStr = new Date().toLocaleDateString("fr-FR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  dateStr = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
+  document.getElementById("dash-greeting").textContent = `${salut} CBLF — ${dateStr}`;
   const prospectsActifs = cache.contacts.filter(c => c.categorie === "Prospect").length;
   const devisEnAttente = cache.devis.filter(d => d.statut === "En attente").length;
   const facturesImpayees = cache.factures.filter(f => ["Envoyée", "En retard", "Partiellement payée"].includes(f.statut)).length;
@@ -529,11 +612,18 @@ function openTodoDialog(id) {
 // ========================================================================
 //  SUIVI CLIENTS  (une ligne par évènement/dossier)
 // ========================================================================
+let prospectView = "table";
 function renderSuivi() {
   ensureFilterOptions("prospect-filter-statut", STATUTS_EVENEMENT);
   const filter = document.getElementById("prospect-filter-statut").value;
   let rows = [...cache.evenements].sort((a, b) => (a.date_evenement || "9999").localeCompare(b.date_evenement || "9999"));
   if (filter) rows = rows.filter(e => e.statut === filter);
+
+  document.getElementById("prospect-view-select").value = prospectView;
+  document.getElementById("prospect-table-view").style.display = prospectView === "table" ? "table" : "none";
+  document.getElementById("prospect-kanban").style.display = prospectView === "kanban" ? "flex" : "none";
+
+  if (prospectView === "kanban") { renderSuiviKanban(rows); return; }
 
   const tbody = document.getElementById("prospect-tbody");
   tbody.innerHTML = rows.length ? rows.map(e => {
@@ -553,6 +643,44 @@ function renderSuivi() {
       <td class="row-actions"><button onclick="openEvenementDialog(${e.id})">${icon("edit",14)}</button></td>
     </tr>`;
   }).join("") : emptyState(9, "Aucun dossier pour l'instant", "Créer un évènement", "openEvenementDialog(null)");
+}
+
+function renderSuiviKanban(rows) {
+  const board = document.getElementById("prospect-kanban");
+  board.innerHTML = STATUTS_EVENEMENT.map(statut => {
+    const items = rows.filter(e => e.statut === statut);
+    const cards = items.map(e => {
+      const dev = cache.devis.find(d => d.evenement_id === e.id);
+      const dateTxt = e.date_flexible ? (fmtMoisFR(e.mois_seul) + " (flex.)") : fmtDateFR(e.date_evenement);
+      return `<div class="kanban-card" draggable="true" data-id="${e.id}" onclick="openEventRecap(${e.id})">
+        <div class="kc-name">${contactLabel(findContact(e.contact_id))}</div>
+        <div class="kc-date">${dateTxt || "—"}${e.type_evenement ? " · " + e.type_evenement : ""}</div>
+        ${dev ? `<div class="kc-badges">${badge(dev.statut, STATUT_COLORS[dev.statut])}</div>` : ""}
+      </div>`;
+    }).join("");
+    return `<div class="kanban-col" data-statut="${statut}">
+      <h4>${statut} <span>${items.length}</span></h4>
+      ${cards}
+    </div>`;
+  }).join("");
+
+  board.querySelectorAll(".kanban-card").forEach(card => {
+    card.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/plain", card.dataset.id); e.dataTransfer.effectAllowed = "move"; });
+  });
+  board.querySelectorAll(".kanban-col").forEach(col => {
+    col.addEventListener("dragover", (e) => { e.preventDefault(); col.classList.add("drag-over"); });
+    col.addEventListener("dragleave", () => col.classList.remove("drag-over"));
+    col.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      col.classList.remove("drag-over");
+      const id = Number(e.dataTransfer.getData("text/plain"));
+      const newStatut = col.dataset.statut;
+      const ev = findEvenement(id);
+      if (!ev || ev.statut === newStatut) return;
+      const saved = await updateRow("evenements", id, { statut: newStatut });
+      if (saved) { showToast("Statut mis à jour : " + newStatut); await refreshCache(); renderSuivi(); }
+    });
+  });
 }
 
 function openEventRecap(id) {
@@ -669,10 +797,10 @@ function renderContacts() {
       <td>${c.telephone || "—"}</td>
       <td>${c.provenance || "—"}</td>
       <td class="row-actions">
-        <button title="Historique devis / factures" onclick="openContactHistory(${c.id})">${icon("folder",14)}</button>
+        <button title="Historique / timeline" onclick="openContactTimeline(${c.id})">${icon("activity",14)}</button>
         <button onclick="openContactDialog(${c.id})">${icon("edit",14)}</button>
         <button onclick="confirmDelete('contacts', ${c.id}, renderContacts)">${icon("trash",14)}</button>
-        <button title="Fiche contact" onclick="openContactFiche(${c.id})">⋯</button>
+        <button title="Fiche contact" onclick="openContactFiche(${c.id})">${icon("more-horizontal",14)}</button>
       </td>
     </tr>`).join("") : emptyState(7, "Aucun contact pour l'instant", "Ajouter ton premier contact", "openContactDialog(null)");
 }
@@ -1180,18 +1308,43 @@ async function downloadAttachment(pdf_path) {
   window.open(data.signedUrl, "_blank");
 }
 
-function openContactHistory(contactId) {
+function openContactTimeline(contactId) {
   const c = findContact(contactId);
-  const devs = cache.devis.filter(d => { const cc = devisContact(d); return cc && cc.id === contactId; });
-  const facs = cache.factures.filter(f => f.contact_id === contactId);
-  const devHtml = devs.length ? devs.map(d => `<tr><td>${d.numero || "—"}</td><td>${fmtDateFR(devisDateEvt(d))}</td><td>${d.montant_ttc ? d.montant_ttc + " €" : "—"}</td><td>${badge(d.statut, STATUT_COLORS[d.statut])}</td><td class="row-actions"><button onclick="generateDevisPDF(${d.id})">${icon("download",14)}</button></td></tr>`).join("") : `<tr class="empty-row"><td colspan="5">Aucun devis</td></tr>`;
-  const facHtml = facs.length ? facs.map(f => `<tr><td>${f.numero || "—"}</td><td>${fmtDateFR(f.date_facture)}</td><td>${f.montant_ttc ? f.montant_ttc + " €" : "—"}</td><td>${badge(f.statut, STATUT_COLORS[f.statut])}</td><td class="row-actions"><button onclick="generateFacturePDF(${f.id})">${icon("download",14)}</button></td></tr>`).join("") : `<tr class="empty-row"><td colspan="5">Aucune facture</td></tr>`;
-  showInfoModal("Historique client", `
-    <p style="margin:0 0 14px;color:var(--muted);font-size:13px;">Contact : <strong>${contactLabel(c)}</strong></p>
-    <h3 style="font-size:14px;margin:0 0 8px;">${icon("file-text", 14)} Devis</h3>
-    <table class="data" style="margin-bottom:18px;"><thead><tr><th>N°</th><th>Date évt</th><th>TTC</th><th>Statut</th><th></th></tr></thead><tbody>${devHtml}</tbody></table>
-    <h3 style="font-size:14px;margin:0 0 8px;">${icon("receipt",14)} Factures</h3>
-    <table class="data"><thead><tr><th>N°</th><th>Date</th><th>TTC</th><th>Statut</th><th></th></tr></thead><tbody>${facHtml}</tbody></table>`);
+  if (!c) return;
+
+  const items = [];
+  cache.devis.forEach(d => {
+    const cc = devisContact(d);
+    if (cc && cc.id === contactId) items.push({ date: d.date_creation, type: "Devis", ic: "file-text", color: STATUT_COLORS[d.statut], label: `${d.numero || "Devis"} — ${d.statut || ""}`, onclick: `openDevisEditor(${d.id})` });
+  });
+  cache.factures.forEach(f => {
+    if (f.contact_id === contactId) items.push({ date: f.date_facture || f.date_creation, type: "Facture", ic: "receipt", color: STATUT_COLORS[f.statut], label: `${f.numero || "Facture"} — ${f.statut || ""}`, onclick: `openFactureDialog(${f.id})` });
+  });
+  cache.todos.forEach(t => {
+    const viaEvent = t.evenement_id && findEvenement(t.evenement_id) && findEvenement(t.evenement_id).contact_id === contactId;
+    if (t.contact_id === contactId || viaEvent) items.push({ date: t.date_echeance || t.date_creation, type: "Tâche", ic: "check-square", color: STATUT_COLORS[t.statut], label: `${t.titre} — ${t.statut || ""}`, onclick: `openTodoDialog(${t.id})` });
+  });
+  cache.rdv.forEach(r => {
+    if (r.contact_id === contactId) items.push({ date: r.date_rdv || r.date_creation, type: "RDV", ic: "users", color: STATUT_COLORS[r.statut], label: `${r.objet || "RDV"} — ${r.statut || ""}`, onclick: `openRdvDialog(${r.id})` });
+  });
+  cache.notes.forEach(n => {
+    if (n.contact_id === contactId) items.push({ date: (n.date_modif || n.date_creation), type: "Note", ic: "book", color: "var(--muted)", label: n.titre, onclick: `openNoteEditor(${n.id})` });
+  });
+
+  items.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+  const rowsHtml = items.length ? items.map(it => `
+    <div style="display:flex;gap:12px;padding:10px 0;border-top:1px solid var(--border);cursor:pointer;" onclick="closeModal();${it.onclick}">
+      <div style="color:${it.color || "var(--muted)"};flex-shrink:0;margin-top:2px;">${icon(it.ic, 16)}</div>
+      <div style="flex:1;">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;">${it.type} · ${fmtDateFR((it.date || "").slice(0, 10)) || "—"}</div>
+        <div style="font-size:13.5px;">${it.label}</div>
+      </div>
+    </div>`).join("") : `<p style="color:var(--muted);font-size:13px;padding:14px 0;">Aucune activité enregistrée pour ce contact.</p>`;
+
+  showInfoModal("Timeline — " + contactLabel(c), `
+    <p style="margin:0 0 6px;color:var(--muted);font-size:13px;">${c.email || ""}${c.telephone ? " · " + c.telephone : ""}</p>
+    <div>${rowsHtml}</div>`);
 }
 
 // ========================================================================
@@ -1730,6 +1883,7 @@ function openNoteEditor(id) {
   noteState = { id: id || null, liens: Array.isArray(row.liens) ? JSON.parse(JSON.stringify(row.liens)) : [], newFiles: [] };
   document.getElementById("note-titre").value = row.titre || "";
   fillNoteCategorieSelect(row.categorie);
+  document.getElementById("note-contact").innerHTML = `<option value="">— Aucun contact lié —</option>` + contactOptionsHtml(row.contact_id);
   document.getElementById("note-contenu").value = row.contenu || "";
   document.getElementById("note-liens-input").value = "";
   renderNoteLiensList();
@@ -1741,8 +1895,9 @@ async function saveNoteEditor() {
   const titre = document.getElementById("note-titre").value.trim();
   if (!titre) { showToast("Le titre est obligatoire"); return; }
   const categorie = document.getElementById("note-categorie").value || null;
+  const contact_id = Number(document.getElementById("note-contact").value) || null;
   const contenu = document.getElementById("note-contenu").value;
-  const values = { titre, categorie, contenu, date_modif: nowStr() };
+  const values = { titre, categorie, contact_id, contenu, date_modif: nowStr() };
   let saved = noteState.id ? await updateRow("notes", noteState.id, { ...values, liens: noteState.liens }) : await insertRow("notes", { ...values, liens: noteState.liens });
   if (!saved) return;
   if (noteState.newFiles.length) {
@@ -2030,6 +2185,32 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("theme-toggle-btn").addEventListener("click", toggleTheme);
   document.getElementById("menu-toggle-btn").addEventListener("click", openMobileMenu);
   document.getElementById("sidebar-overlay").addEventListener("click", closeMobileMenu);
+  document.getElementById("global-search-btn").addEventListener("click", openGlobalSearch);
+  document.getElementById("gsearch-close").addEventListener("click", closeGlobalSearch);
+  document.getElementById("gsearch-overlay").addEventListener("click", (e) => { if (e.target.id === "gsearch-overlay") closeGlobalSearch(); });
+  document.getElementById("gsearch-input").addEventListener("input", (e) => renderGlobalSearchResults(e.target.value));
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openGlobalSearch(); }
+    if (e.key === "Escape" && document.getElementById("gsearch-overlay").classList.contains("open")) closeGlobalSearch();
+  });
+  // Balayage tactile pour ouvrir/fermer le menu sur mobile
+  let touchStartX = null, touchStartY = null;
+  document.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1) return;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  document.addEventListener("touchend", (e) => {
+    if (touchStartX == null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(dx) > 60 && Math.abs(dy) < 60) {
+      const isOpen = document.getElementById("sidebar").classList.contains("open");
+      if (dx > 0 && !isOpen && touchStartX < 40) openMobileMenu();
+      else if (dx < 0 && isOpen) closeMobileMenu();
+    }
+    touchStartX = null; touchStartY = null;
+  }, { passive: true });
   document.getElementById("notes-panel-close").addEventListener("click", closeNotesPanel);
   document.getElementById("notes-panel-cancel").addEventListener("click", closeNotesPanel);
   document.getElementById("notes-panel-overlay").addEventListener("click", closeNotesPanel);
@@ -2045,8 +2226,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("btn-new-todo").addEventListener("click", () => openTodoDialog(null));
   document.getElementById("btn-new-prospect").addEventListener("click", () => openEvenementDialog(null));
+  document.getElementById("prospect-view-select").addEventListener("change", (e) => { prospectView = e.target.value; renderSuivi(); });
   document.getElementById("btn-new-devis").addEventListener("click", () => openDevisDialog(null));
+  document.getElementById("btn-export-devis-csv").addEventListener("click", exportDevisCSV);
   document.getElementById("btn-new-facture").addEventListener("click", () => openFactureDialog(null));
+  document.getElementById("btn-export-factures-csv").addEventListener("click", exportFacturesCSV);
   document.getElementById("btn-new-contact").addEventListener("click", () => openContactDialog(null));
   document.getElementById("btn-new-evenement").addEventListener("click", () => openEvenementDialog(null));
   document.getElementById("btn-new-rdv").addEventListener("click", () => openRdvDialog(null));
