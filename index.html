@@ -102,6 +102,7 @@
 
   /* table */
   table.data{width:100%;border-collapse:collapse;background:var(--card);border-radius:16px;overflow:hidden;border:1px solid var(--border);}
+  .table-scroll{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:16px;}
   table.data th{background:#EFEEE9;text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);padding:12px 14px;}
   table.data td{padding:11px 14px;font-size:13px;border-top:1px solid var(--border);vertical-align:top;}
   table.data tr:hover td{background:#FAFAF8;}
@@ -361,13 +362,13 @@
           <div class="cards-row" id="dash-cards"></div>
           <div class="panel">
             <h3><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> Aperçu des tâches</h3>
-            <table class="data"><thead><tr><th>Titre</th><th>Lié à</th><th>Priorité</th><th>Échéance</th><th>Statut</th></tr></thead>
-            <tbody id="dash-todos"></tbody></table>
+            <div class="table-scroll"><table class="data"><thead><tr><th>Titre</th><th>Lié à</th><th>Priorité</th><th>Échéance</th><th>Statut</th></tr></thead>
+            <tbody id="dash-todos"></tbody></table></div>
           </div>
           <div class="panel">
             <h3><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> À venir (RDV, événements &amp; échéances)</h3>
-            <table class="data"><thead><tr><th>Date</th><th>Type</th><th>Détail</th><th>Statut</th></tr></thead>
-            <tbody id="dash-dates"></tbody></table>
+            <div class="table-scroll"><table class="data"><thead><tr><th>Date</th><th>Type</th><th>Détail</th><th>Statut</th></tr></thead>
+            <tbody id="dash-dates"></tbody></table></div>
           </div>
         </div>
 
@@ -383,10 +384,10 @@
             <button class="btn" id="btn-new-todo"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouvelle tâche</button>
           </div>
           <div class="page-note">Une tâche avec une échéance à 7 jours ou moins passe automatiquement en <strong>Urgente</strong> (affichée en rouge).</div>
-          <table class="data">
+          <div class="table-scroll"><table class="data">
             <thead><tr><th>Titre</th><th>Lié à</th><th>Priorité</th><th>Échéance</th><th>Statut</th><th></th></tr></thead>
             <tbody id="todo-tbody"></tbody>
-          </table>
+          </table></div>
 
           <div class="panel" style="margin-top:26px;">
             <div class="page-toolbar" style="margin-bottom:10px;">
@@ -396,26 +397,26 @@
                 <button class="btn" id="btn-new-rdv"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouveau RDV</button>
               </div>
             </div>
-            <table class="data">
+            <div class="table-scroll"><table class="data">
               <thead><tr><th>Date</th><th>Heure</th><th>Objet</th><th>Contact</th><th>Statut</th><th>Notes</th><th></th></tr></thead>
               <tbody id="rdv-tbody"></tbody>
-            </table>
+            </table></div>
           </div>
 
           <div class="panel" style="margin-top:20px;">
             <h3><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Rendez-vous passés</h3>
-            <table class="data">
+            <div class="table-scroll"><table class="data">
               <thead><tr><th>Date</th><th>Heure</th><th>Objet</th><th>Contact</th><th>Statut</th><th>Notes</th><th></th></tr></thead>
               <tbody id="rdv-past-tbody"></tbody>
-            </table>
+            </table></div>
           </div>
 
           <div class="panel" style="margin-top:20px;">
             <h3><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> Tâches terminées</h3>
-            <table class="data">
+            <div class="table-scroll"><table class="data">
               <thead><tr><th>Titre</th><th>Lié à</th><th>Priorité</th><th>Échéance</th><th></th></tr></thead>
               <tbody id="todo-done-tbody"></tbody>
-            </table>
+            </table></div>
           </div>
         </div>
 
@@ -433,10 +434,10 @@
             </div>
           </div>
           <div class="page-note">Suivi de tous les dossiers (prospects et clients). Un clic sur <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg> ouvre la fiche récap de l'évènement. En vue Kanban, glisse une carte vers une autre colonne pour changer son statut.</div>
-          <table class="data" id="prospect-table-view">
+          <div class="table-scroll"><table class="data" id="prospect-table-view">
             <thead><tr><th>Contact</th><th>Date</th><th>Dernière action</th><th>Tâche liée</th><th>Récap</th><th>Statut évt</th><th>Devis</th><th>Facture</th><th></th></tr></thead>
             <tbody id="prospect-tbody"></tbody>
-          </table>
+          </table></div>
           <div id="prospect-kanban" class="kanban-board" style="display:none;"></div>
         </div>
 
@@ -450,10 +451,10 @@
             </div>
             <button class="btn" id="btn-new-contact"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouveau contact</button>
           </div>
-          <table class="data">
+          <div class="table-scroll"><table class="data">
             <thead><tr><th>Nom</th><th>Catégorie</th><th>Société</th><th>Email</th><th>Téléphone</th><th>Provenance</th><th></th></tr></thead>
             <tbody id="contact-tbody"></tbody>
-          </table>
+          </table></div>
         </div>
 
         <!-- DEVIS -->
@@ -469,10 +470,10 @@
             <button class="btn secondary" id="btn-export-devis-csv"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export CSV</button>
             <button class="btn" id="btn-new-devis"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouveau devis</button>
           </div>
-          <table class="data">
+          <div class="table-scroll"><table class="data">
             <thead><tr><th>N°</th><th>Évènement</th><th>Date création</th><th>Montant TTC</th><th>Statut</th><th></th></tr></thead>
             <tbody id="devis-tbody"></tbody>
-          </table>
+          </table></div>
         </div>
 
         <!-- FACTURATION -->
@@ -486,10 +487,10 @@
             <button class="btn secondary" id="btn-export-factures-csv"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export CSV</button>
             <button class="btn" id="btn-new-facture"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouvelle facture</button>
           </div>
-          <table class="data">
+          <div class="table-scroll"><table class="data">
             <thead><tr><th>N°</th><th>Contact</th><th>Devis lié</th><th>Date</th><th>Montant TTC</th><th>Statut</th><th></th></tr></thead>
             <tbody id="facture-tbody"></tbody>
-          </table>
+          </table></div>
         </div>
 
         <!-- EVENEMENTS -->
@@ -504,10 +505,10 @@
             </div>
             <button class="btn" id="btn-new-evenement"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouvel évènement</button>
           </div>
-          <table class="data">
+          <div class="table-scroll"><table class="data">
             <thead><tr><th>Date</th><th>Contact</th><th>Provenance</th><th>Type</th><th>Prestation</th><th>Invités</th><th>Statut</th><th>Devis</th><th>Facture</th><th>Dernière action</th><th></th></tr></thead>
             <tbody id="evenement-tbody"></tbody>
-          </table>
+          </table></div>
         </div>
 
         <!-- CALENDRIER -->
@@ -531,8 +532,8 @@
           </div>
           <div class="panel cal-day-panel">
             <h3 id="cal-day-lbl">Évènements du jour</h3>
-            <table class="data"><thead><tr><th>Heure</th><th>Titre</th><th>Type</th><th>Statut</th></tr></thead>
-            <tbody id="cal-day-tbody"></tbody></table>
+            <div class="table-scroll"><table class="data"><thead><tr><th>Heure</th><th>Titre</th><th>Type</th><th>Statut</th></tr></thead>
+            <tbody id="cal-day-tbody"></tbody></table></div>
           </div>
         </div>
 
@@ -547,10 +548,10 @@
             <button class="btn" id="btn-new-grille"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouvelle prestation</button>
           </div>
           <div class="page-note">Ces prestations alimentent la liste des désignations dans l'éditeur de devis, filtrées selon la saison de la date de l'évènement (Haute saison : 1er avril – 30 septembre · Basse saison : 1er octobre – 31 mars).</div>
-          <table class="data">
+          <div class="table-scroll"><table class="data">
             <thead><tr><th>Prestation</th><th>Détails</th><th>Saison</th><th>PU TTC</th><th>TVA</th><th>Montant TVA</th><th>PU HT</th><th></th></tr></thead>
             <tbody id="grille-tbody"></tbody>
-          </table>
+          </table></div>
         </div>
 
         <!-- COMMANDE -->
@@ -564,10 +565,10 @@
             <button class="btn" id="btn-new-commande"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouvelle commande</button>
           </div>
           <div class="page-note">Chaque article saisi est mémorisé : il te sera proposé automatiquement lors des prochaines commandes. Le lien à un évènement est facultatif.</div>
-          <table class="data">
+          <div class="table-scroll"><table class="data">
             <thead><tr><th>Article</th><th>Qté</th><th>Fournisseur</th><th>Évènement lié</th><th>Date évènement</th><th>Date commande</th><th>Statut</th><th>Description</th><th></th></tr></thead>
             <tbody id="commande-tbody"></tbody>
-          </table>
+          </table></div>
           <datalist id="commande-articles"></datalist>
           <datalist id="commande-fournisseurs"></datalist>
         </div>
@@ -579,10 +580,10 @@
             <select class="filter" id="prestataire-filter-type"><option value="">Tous les types</option></select>
             <button class="btn" id="btn-new-prestataire"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouvelle fiche prestataire</button>
           </div>
-          <table class="data">
+          <div class="table-scroll"><table class="data">
             <thead><tr><th>Contact</th><th>Type prestataire</th><th>Fiche présentation</th><th>Tarifs</th><th>Localisation</th><th></th></tr></thead>
             <tbody id="prestataire-tbody"></tbody>
-          </table>
+          </table></div>
         </div>
 
         <!-- NOTES -->
@@ -598,10 +599,10 @@
               <button class="btn" id="btn-new-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouvelles notes</button>
             </div>
           </div>
-          <table class="data">
+          <div class="table-scroll"><table class="data">
             <thead><tr><th>Titre</th><th>Catégorie</th><th></th></tr></thead>
             <tbody id="notes-tbody"></tbody>
-          </table>
+          </table></div>
         </div>
 
       </div>
@@ -684,13 +685,13 @@
       </div>
       <div class="em" id="ed-emetteur"></div>
     </div>
-    <table class="lines-table">
+    <div class="table-scroll"><table class="lines-table">
       <thead><tr>
         <th style="width:26%;">Désignation</th><th>Qté</th><th>PU TTC</th><th>Remise %</th>
         <th>Total HT</th><th>TVA %</th><th>Total TVA</th><th>Total TTC</th><th></th>
       </tr></thead>
       <tbody id="ed-lines"></tbody>
-    </table>
+    </table></div>
     <div style="margin-top:10px;"><button class="btn secondary" type="button" id="ed-add-line"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Ajouter une ligne</button></div>
     <div class="totaux" id="ed-totaux"></div>
     <div id="ed-cgv-preview" style="margin-top:16px;font-size:12px;color:var(--muted);"></div>
