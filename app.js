@@ -24,6 +24,7 @@ const PROVENANCES = ["mariage.net", "sms", "mail", "site internet", "1001salles"
 const TYPES_PRESTATION = ["Location", "Clés en main prestataires", "Clés en main nous"];
 const FORMULES = ["Clef en main", "Location salle"];
 const TVA_RATES = [0, 5.5, 8, 10, 20];
+const SAISONS = ["Toute l'année", "Haute saison", "Basse saison"];
 const TVA_DEVIS = [10, 20];
 const CGV_OPTIONS = [
   "Paiement du solde à la date de l'événement.",
@@ -62,7 +63,7 @@ let currentUser = null;
 let cache = { contacts: [], prospects: [], devis: [], evenements: [], todos: [], grille_tarifaire: [], rdv: [], factures: [], commandes: [] };
 let currentPage = "dashboard";
 let modalContext = null;
-let calState = { year: new Date().getFullYear(), month: new Date().getMonth() + 1, selected: null };
+let calState = { year: new Date().getFullYear(), month: new Date().getMonth() + 1, selected: null, view: "month" };
 let edState = { id: null, lignes: [] };
 
 // ---- 4) HELPERS ----
@@ -124,6 +125,11 @@ function devisContact(d) {
 }
 function devisDateEvt(d) { const e = devisEvent(d); return (e && e.date_evenement) || (d && d.date_evenement) || null; }
 function devisNbInvites(d) { const e = devisEvent(d); return (e && e.nb_invites != null) ? e.nb_invites : (d && d.nb_invites); }
+function seasonForDate(iso) {
+  if (!iso) return null;
+  const m = Number(iso.slice(5, 7));
+  return (m >= 4 && m <= 9) ? "Haute saison" : "Basse saison";
+}
 
 // ---- 5) SUPABASE CRUD GENERIQUE ----
 async function fetchAll(table, orderCol = "id", ascending = false) {
@@ -746,10 +752,12 @@ function openDevisEditor(id) {
   document.getElementById("ed-emetteur").innerHTML =
     `<strong>${EMETTEUR.nom}</strong><br>${EMETTEUR.adresse}<br>${EMETTEUR.siret}<br>${EMETTEUR.email}<br>Tél : ${EMETTEUR.telephone}`;
 
-  // datalist des désignations (depuis la tarification)
+  // datalist des désignations (depuis la tarification, filtrée par saison de l'évènement)
   let dl = document.getElementById("ed-desig");
   if (!dl) { dl = document.createElement("datalist"); dl.id = "ed-desig"; document.body.appendChild(dl); }
-  dl.innerHTML = cache.grille_tarifaire.map(g => `<option value="${(g.nom_presta || "").replace(/"/g, "&quot;")}">`).join("");
+  const season = seasonForDate(devisDateEvt(d));
+  const grilleFiltree = season ? cache.grille_tarifaire.filter(g => !g.saison || g.saison === "Toute l'année" || g.saison === season) : cache.grille_tarifaire;
+  dl.innerHTML = grilleFiltree.map(g => `<option value="${(g.nom_presta || "").replace(/"/g, "&quot;")}">`).join("");
 
   renderEditorLines();
   renderCgvPreview(d);
@@ -1252,17 +1260,20 @@ function openRdvDialog(id) {
 // ========================================================================
 function renderGrille() {
   bindSearch("grille-search", renderGrille);
+  ensureFilterOptions("grille-filter-saison", SAISONS);
   const search = (document.getElementById("grille-search").value || "").toLowerCase();
+  const fSaison = document.getElementById("grille-filter-saison").value;
   let rows = [...cache.grille_tarifaire];
   if (search) rows = rows.filter(g => ((g.nom_presta || "") + " " + (g.details || "")).toLowerCase().includes(search));
+  if (fSaison) rows = rows.filter(g => (g.saison || "Toute l'année") === fSaison);
   const tbody = document.getElementById("grille-tbody");
   tbody.innerHTML = rows.length ? rows.map(g => `
     <tr>
-      <td>${g.nom_presta || "—"}</td><td>${g.details || "—"}</td>
-      <td>${g.pu_ht != null ? g.pu_ht + " €" : "—"}</td><td>${g.tva != null ? g.tva + " %" : "—"}</td>
-      <td>${g.montant_tva != null ? g.montant_tva + " €" : "—"}</td><td><strong>${g.pu_ttc != null ? g.pu_ttc + " €" : "—"}</strong></td>
+      <td>${g.nom_presta || "—"}</td><td>${g.details || "—"}</td><td>${g.saison || "Toute l'année"}</td>
+      <td><strong>${g.pu_ttc != null ? g.pu_ttc + " €" : "—"}</strong></td><td>${g.tva != null ? g.tva + " %" : "—"}</td>
+      <td>${g.montant_tva != null ? g.montant_tva + " €" : "—"}</td><td>${g.pu_ht != null ? g.pu_ht + " €" : "—"}</td>
       <td class="row-actions"><button onclick="openGrilleDialog(${g.id})">✎</button><button onclick="confirmDelete('grille_tarifaire', ${g.id}, renderGrille)">🗑</button></td>
-    </tr>`).join("") : `<tr class="empty-row"><td colspan="7">Aucune prestation — ajoute ta première ligne</td></tr>`;
+    </tr>`).join("") : `<tr class="empty-row"><td colspan="8">Aucune prestation — ajoute ta première ligne</td></tr>`;
 }
 function openGrilleDialog(id) {
   const row = id ? findGrille(id) : {};
@@ -1271,14 +1282,15 @@ function openGrilleDialog(id) {
     fields: [
       { key: "nom_presta", label: "Nom de la prestation", type: "text", required: true, value: row.nom_presta },
       { key: "details", label: "Détails", type: "textarea", value: row.details },
-      { key: "pu_ht", label: "PU HT (€)", type: "number", value: row.pu_ht },
+      { key: "saison", label: "Saison", type: "select", options: SAISONS, value: row.saison || "Toute l'année" },
+      { key: "pu_ttc", label: "PU TTC (€)", type: "number", value: row.pu_ttc },
       { key: "tva", label: "TVA (%)", type: "select", options: TVA_RATES, value: row.tva != null ? row.tva : 20 },
       { key: "montant_tva", label: "Montant TVA (€) — calculé", type: "computed", value: row.montant_tva },
-      { key: "pu_ttc", label: "PU TTC (€) — calculé", type: "computed", value: row.pu_ttc },
+      { key: "pu_ht", label: "PU HT (€) — calculé", type: "computed", value: row.pu_ht },
     ],
     onRender: (form) => {
-      const calc = () => { const ht = Number(form.elements["pu_ht"].value || 0); const tva = Number(form.elements["tva"].value || 0); const mtva = round2(ht * tva / 100); form.elements["montant_tva"].value = ht ? mtva : ""; form.elements["pu_ttc"].value = ht ? round2(ht + mtva) : ""; };
-      form.elements["pu_ht"].addEventListener("input", calc);
+      const calc = () => { const ttc = Number(form.elements["pu_ttc"].value || 0); const tva = Number(form.elements["tva"].value || 0); const ht = round2(ttc / (1 + tva / 100)); form.elements["pu_ht"].value = ttc ? ht : ""; form.elements["montant_tva"].value = ttc ? round2(ttc - ht) : ""; };
+      form.elements["pu_ttc"].addEventListener("input", calc);
       form.elements["tva"].addEventListener("change", calc);
       calc();
     },
@@ -1335,6 +1347,36 @@ function openCommandeDialog(id) {
 const MOIS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 const DOW_FR = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
 function renderCalendrier() {
+  document.getElementById("cal-grid").style.display = calState.view === "month" ? "grid" : "none";
+  document.getElementById("cal-year-grid").style.display = calState.view === "year" ? "grid" : "none";
+  document.getElementById("cal-view-select").value = calState.view;
+  if (calState.view === "year") { renderCalendrierYear(); return; }
+  renderCalendrierMonth();
+}
+function renderCalendrierYear() {
+  const { year } = calState;
+  document.getElementById("cal-month-lbl").textContent = String(year);
+  const eventsByMonth = {};
+  cache.evenements.forEach(e => {
+    if (!e.date_evenement) return;
+    const [y, m] = e.date_evenement.split("-").map(Number);
+    if (y === year) (eventsByMonth[m] = eventsByMonth[m] || []).push(e);
+  });
+  document.getElementById("cal-year-grid").innerHTML = MOIS_FR.map((mLabel, i) => {
+    const m = i + 1;
+    const evts = (eventsByMonth[m] || []).sort((a, b) => (a.date_evenement || "").localeCompare(b.date_evenement || ""));
+    const items = evts.slice(0, 4).map(e => `<div class="yc-item">${e.date_evenement.slice(8, 10)} — ${contactLabel(findContact(e.contact_id))}</div>`).join("");
+    return `<div class="cal-year-month" onclick="goToCalMonth(${year},${m})">
+      <h4>${mLabel}</h4>
+      <div class="yc-count">${evts.length} évènement${evts.length > 1 ? "s" : ""}</div>
+      ${items}${evts.length > 4 ? `<div class="yc-item">+ ${evts.length - 4} autre(s)</div>` : ""}
+    </div>`;
+  }).join("");
+  document.getElementById("cal-day-lbl").textContent = "Évènements du jour";
+  document.getElementById("cal-day-tbody").innerHTML = `<tr class="empty-row"><td colspan="4">Clique sur un mois pour le détailler</td></tr>`;
+}
+function goToCalMonth(year, month) { calState.year = year; calState.month = month; calState.view = "month"; calState.selected = null; renderCalendrier(); }
+function renderCalendrierMonth() {
   const { year, month } = calState;
   document.getElementById("cal-month-lbl").textContent = `${MOIS_FR[month - 1]} ${year}`;
   const eventsByDay = {};
@@ -1602,8 +1644,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  document.getElementById("cal-prev").addEventListener("click", () => { calState.month--; if (calState.month < 1) { calState.month = 12; calState.year--; } calState.selected = null; renderCalendrier(); });
-  document.getElementById("cal-next").addEventListener("click", () => { calState.month++; if (calState.month > 12) { calState.month = 1; calState.year++; } calState.selected = null; renderCalendrier(); });
+  document.getElementById("cal-prev").addEventListener("click", () => {
+    if (calState.view === "year") { calState.year--; renderCalendrier(); return; }
+    calState.month--; if (calState.month < 1) { calState.month = 12; calState.year--; } calState.selected = null; renderCalendrier();
+  });
+  document.getElementById("cal-next").addEventListener("click", () => {
+    if (calState.view === "year") { calState.year++; renderCalendrier(); return; }
+    calState.month++; if (calState.month > 12) { calState.month = 1; calState.year++; } calState.selected = null; renderCalendrier();
+  });
+  document.getElementById("cal-view-select").addEventListener("change", (e) => { calState.view = e.target.value; renderCalendrier(); });
 
   document.addEventListener("keydown", e => {
     if (!currentUser) return;
