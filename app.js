@@ -25,6 +25,7 @@ const TYPES_PRESTATION = ["Location", "Clés en main prestataires", "Clés en ma
 const FORMULES = ["Clef en main", "Location salle"];
 const TVA_RATES = [0, 5.5, 8, 10, 20];
 const SAISONS = ["Toute l'année", "Haute saison", "Basse saison"];
+const TYPES_PRESTATAIRE = ["Traiteur", "Décorateur", "Animateur", "Fleuriste", "DJ", "Chanteur/Musicien", "Photographe", "Hébergement", "Organisateur"];
 const TVA_DEVIS = [10, 20];
 const CGV_OPTIONS = [
   "Paiement du solde à la date de l'événement.",
@@ -60,7 +61,7 @@ const STATUT_COLORS = {
 
 // ---- 3) ETAT LOCAL ----
 let currentUser = null;
-let cache = { contacts: [], prospects: [], devis: [], evenements: [], todos: [], grille_tarifaire: [], rdv: [], factures: [], commandes: [] };
+let cache = { contacts: [], prospects: [], devis: [], evenements: [], todos: [], grille_tarifaire: [], rdv: [], factures: [], commandes: [], prestataires: [], notes: [], note_categories: [] };
 let currentPage = "dashboard";
 let modalContext = null;
 let calState = { year: new Date().getFullYear(), month: new Date().getMonth() + 1, selected: null, view: "month" };
@@ -155,7 +156,7 @@ async function deleteRow(table, id) {
   return true;
 }
 async function refreshCache() {
-  const [contacts, prospects, devisRows, evenements, todos, grille, rdv, factures, commandes] = await Promise.all([
+  const [contacts, prospects, devisRows, evenements, todos, grille, rdv, factures, commandes, prestataires, notes, noteCategories] = await Promise.all([
     fetchAll("contacts", "nom", true),
     fetchAll("prospects"),
     fetchAll("devis"),
@@ -165,8 +166,11 @@ async function refreshCache() {
     fetchAll("rdv"),
     fetchAll("factures"),
     fetchAll("commandes", "article", true),
+    fetchAll("prestataires"),
+    fetchAll("notes"),
+    fetchAll("note_categories", "nom", true),
   ]);
-  cache = { contacts, prospects, devis: devisRows, evenements, todos, grille_tarifaire: grille, rdv, factures, commandes };
+  cache = { contacts, prospects, devis: devisRows, evenements, todos, grille_tarifaire: grille, rdv, factures, commandes, prestataires, notes, note_categories: noteCategories };
 }
 
 // ========================================================================
@@ -244,6 +248,8 @@ function renderPage(key) {
   else if (key === "calendrier") renderCalendrier();
   else if (key === "tarification") renderGrille();
   else if (key === "commande") renderCommande();
+  else if (key === "prestataire") renderPrestataire();
+  else if (key === "notes") renderNotes();
 }
 async function refreshAll() { await refreshCache(); renderPage(currentPage); }
 function goToFilter(page, selectId, value) {
@@ -1429,6 +1435,324 @@ function renderCalDay() {
 }
 
 // ========================================================================
+//  PRESTATAIRE
+// ========================================================================
+function findPrestataire(id) { return cache.prestataires.find(p => p.id === id); }
+function cityFromAddress(adresse) {
+  if (!adresse) return null;
+  const parts = adresse.split(",").map(s => s.trim()).filter(Boolean);
+  if (!parts.length) return null;
+  return parts[parts.length - 1].replace(/^\d{4,5}\s*/, "").trim() || null;
+}
+function prestataireTarifLabel(p) {
+  const prix = (p.prestations || []).flatMap(pr => {
+    if (pr.type_prix === "Fourchette") return [pr.prix_min, pr.prix_max].filter(x => x != null && x !== "").map(Number);
+    return pr.prix_exact != null && pr.prix_exact !== "" ? [Number(pr.prix_exact)] : [];
+  }).filter(x => !isNaN(x));
+  if (!prix.length) return "—";
+  const min = Math.min(...prix), max = Math.max(...prix);
+  return min === max ? min + " €" : `entre ${min} € et ${max} €`;
+}
+let prestState = { id: null, lignes: [] };
+const BLANK_PREST_LIGNE = () => ({ titre: "", description: "", type_prix: "Exact", prix_exact: "", prix_min: "", prix_max: "" });
+
+function renderPrestataire() {
+  ensureFilterOptions("prestataire-filter-type", TYPES_PRESTATAIRE);
+  const filter = document.getElementById("prestataire-filter-type").value;
+  let rows = [...cache.prestataires];
+  if (filter) rows = rows.filter(p => p.type_prestataire === filter);
+  const tbody = document.getElementById("prestataire-tbody");
+  tbody.innerHTML = rows.length ? rows.map(p => {
+    const c = findContact(p.contact_id);
+    return `<tr>
+      <td>${contactLabel(c)}</td>
+      <td>${p.type_prestataire || "—"}</td>
+      <td>${p.pdf_path ? `<button title="Voir la fiche" onclick="downloadAttachment('${p.pdf_path}')">📎 Voir</button>` : "—"}</td>
+      <td>${prestataireTarifLabel(p)}</td>
+      <td>${cityFromAddress(c && c.adresse) || "—"}</td>
+      <td class="row-actions">
+        <button title="Fiche récap" onclick="openPrestataireRecap(${p.id})">📋</button>
+        <button onclick="openPrestataireDialog(${p.id})">✎</button>
+        <button onclick="confirmDelete('prestataires', ${p.id}, renderPrestataire)">🗑</button>
+      </td>
+    </tr>`;
+  }).join("") : `<tr class="empty-row"><td colspan="6">Aucun prestataire — ajoute ta première fiche</td></tr>`;
+}
+
+function openPrestataireDialog(id) {
+  const row = id ? findPrestataire(id) : {};
+  prestState = { id: id || null, lignes: Array.isArray(row.prestations) && row.prestations.length ? JSON.parse(JSON.stringify(row.prestations)) : [BLANK_PREST_LIGNE()] };
+
+  const html = `
+    <div class="field"><label>Contact lié</label>
+      <select id="prest-contact"><option value="">— Sélectionner —</option>${contactOptionsHtml(row.contact_id)}</select>
+    </div>
+    <div id="prest-contact-info" style="font-size:12.5px;color:var(--muted);margin:-6px 0 12px;"></div>
+    <div class="field"><label>Type de prestataire</label>
+      <select id="prest-type">${TYPES_PRESTATAIRE.map(t => `<option value="${t}" ${t === row.type_prestataire ? "selected" : ""}>${t}</option>`).join("")}</select>
+    </div>
+    <div class="field"><label>Fiche de présentation (PDF)</label>
+      <input type="file" id="prest-pdf" accept="application/pdf">
+      ${row.pdf_path ? `<div style="margin-top:6px;"><button type="button" class="btn secondary" onclick="downloadAttachment('${row.pdf_path}')">📎 Voir la fiche actuelle</button></div>` : ""}
+    </div>
+    <div class="field"><label>Prestations</label>
+      <div id="prest-lignes"></div>
+      <button type="button" class="btn secondary" id="prest-add-ligne">＋ Ajouter une prestation</button>
+    </div>`;
+
+  openRawModal(id ? "Modifier la fiche prestataire" : "Nouvelle fiche prestataire", html, savePrestataire);
+  document.getElementById("modal-delete").style.display = id ? "inline-block" : "none";
+  if (id) document.getElementById("modal-delete").onclick = () => { closeModal(); confirmDelete("prestataires", id, renderPrestataire); };
+
+  renderPrestLignes();
+  const contactSel = document.getElementById("prest-contact");
+  const updateContactInfo = () => {
+    const c = findContact(Number(contactSel.value));
+    document.getElementById("prest-contact-info").innerHTML = c
+      ? `${contactLabel(c)}${c.telephone ? " · " + c.telephone : ""}${c.email ? " · " + c.email : ""}${c.adresse ? "<br>" + c.adresse : ""}${c.provenance ? "<br>Provenance : " + c.provenance : ""}`
+      : "";
+  };
+  contactSel.addEventListener("change", updateContactInfo);
+  updateContactInfo();
+  document.getElementById("prest-add-ligne").addEventListener("click", () => { prestState.lignes.push(BLANK_PREST_LIGNE()); renderPrestLignes(); });
+}
+
+function renderPrestLignes() {
+  const c = document.getElementById("prest-lignes");
+  c.innerHTML = prestState.lignes.map((l, i) => `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;align-items:center;">
+        <input data-pi="${i}" data-pk="titre" placeholder="Titre de la prestation" value="${escapeAttr(l.titre || "")}" style="flex:1;min-width:140px;padding:7px 8px;border:1px solid var(--border);border-radius:5px;">
+        <button type="button" onclick="removePrestLigne(${i})" style="background:none;border:none;color:var(--danger);font-size:15px;">✕</button>
+      </div>
+      <textarea data-pi="${i}" data-pk="description" placeholder="Description" style="width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:5px;min-height:44px;margin-bottom:6px;">${l.description || ""}</textarea>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <select data-pi="${i}" data-pk="type_prix" style="padding:6px 8px;border:1px solid var(--border);border-radius:5px;">
+          <option value="Exact" ${l.type_prix === "Exact" ? "selected" : ""}>Prix exact</option>
+          <option value="Fourchette" ${l.type_prix === "Fourchette" ? "selected" : ""}>Fourchette de prix</option>
+        </select>
+        ${l.type_prix === "Fourchette" ? `
+          <input type="number" data-pi="${i}" data-pk="prix_min" placeholder="Min €" value="${l.prix_min != null ? l.prix_min : ""}" style="width:90px;padding:6px 8px;border:1px solid var(--border);border-radius:5px;">
+          <input type="number" data-pi="${i}" data-pk="prix_max" placeholder="Max €" value="${l.prix_max != null ? l.prix_max : ""}" style="width:90px;padding:6px 8px;border:1px solid var(--border);border-radius:5px;">
+        ` : `
+          <input type="number" data-pi="${i}" data-pk="prix_exact" placeholder="Prix €" value="${l.prix_exact != null ? l.prix_exact : ""}" style="width:100px;padding:6px 8px;border:1px solid var(--border);border-radius:5px;">
+        `}
+      </div>
+    </div>`).join("");
+  c.querySelectorAll("[data-pi]").forEach(el => { el.addEventListener("input", readPrestLigneField); el.addEventListener("change", readPrestLigneField); });
+}
+function readPrestLigneField(e) {
+  const i = Number(e.target.dataset.pi), k = e.target.dataset.pk;
+  prestState.lignes[i][k] = e.target.type === "number" ? (e.target.value === "" ? "" : Number(e.target.value)) : e.target.value;
+  if (k === "type_prix") renderPrestLignes();
+}
+function removePrestLigne(i) {
+  prestState.lignes.splice(i, 1);
+  if (!prestState.lignes.length) prestState.lignes.push(BLANK_PREST_LIGNE());
+  renderPrestLignes();
+}
+async function savePrestataire() {
+  const contact_id = Number(document.getElementById("prest-contact").value) || null;
+  const type_prestataire = document.getElementById("prest-type").value;
+  const fileEl = document.getElementById("prest-pdf");
+  const values = { contact_id, type_prestataire, prestations: prestState.lignes.filter(l => l.titre) };
+  let saved = prestState.id ? await updateRow("prestataires", prestState.id, values) : await insertRow("prestataires", values);
+  if (!saved) return;
+  if (fileEl && fileEl.files && fileEl.files[0]) {
+    const path = `${currentUser.id}/prestataires-${saved.id}.pdf`;
+    const { error } = await sb.storage.from("devis-signes").upload(path, fileEl.files[0], { upsert: true, contentType: "application/pdf" });
+    if (!error) await updateRow("prestataires", saved.id, { pdf_path: path });
+    else showToast("Erreur envoi du PDF");
+  }
+  showToast(prestState.id ? "Fiche mise à jour" : "Fiche ajoutée");
+  if (!prestState.id) clearTableFilters("prestataires");
+  closeModal();
+  await refreshAll();
+}
+function openPrestataireRecap(id) {
+  const p = findPrestataire(id);
+  if (!p) return;
+  const c = findContact(p.contact_id);
+  const line = (l, v) => `<tr><td style="color:var(--muted);width:42%;">${l}</td><td>${v || "—"}</td></tr>`;
+  const prestHtml = (p.prestations || []).length ? p.prestations.map(pr => {
+    const prix = pr.type_prix === "Fourchette" ? `${pr.prix_min ?? "?"} € – ${pr.prix_max ?? "?"} €` : (pr.prix_exact != null && pr.prix_exact !== "" ? pr.prix_exact + " €" : "—");
+    return `<tr><td>${pr.titre || "—"}</td><td>${pr.description || "—"}</td><td>${prix}</td></tr>`;
+  }).join("") : `<tr class="empty-row"><td colspan="3">Aucune prestation renseignée</td></tr>`;
+  const html = `
+    <table class="data" style="margin-bottom:16px;"><tbody>
+      ${line("Contact", contactLabel(c))}
+      ${line("Téléphone", c && c.telephone)}
+      ${line("Email", c && c.email)}
+      ${line("Adresse", c && c.adresse)}
+      ${line("Provenance", c && c.provenance)}
+      ${line("Type de prestataire", p.type_prestataire)}
+      ${line("Tarifs", prestataireTarifLabel(p))}
+      ${line("Localisation", cityFromAddress(c && c.adresse))}
+    </tbody></table>
+    <h3 style="font-size:14px;margin:0 0 8px;">🎤 Prestations</h3>
+    <table class="data" style="margin-bottom:16px;"><thead><tr><th>Titre</th><th>Description</th><th>Prix</th></tr></thead><tbody>${prestHtml}</tbody></table>
+    ${p.pdf_path ? `<button class="btn secondary" type="button" onclick="downloadAttachment('${p.pdf_path}')">📎 Voir la fiche de présentation</button>` : ""}`;
+  showInfoModal("Fiche récap prestataire", html);
+}
+
+// ========================================================================
+//  NOTES
+// ========================================================================
+function findNote(id) { return cache.notes.find(n => n.id === id); }
+let noteState = { id: null, liens: [], newFiles: [] };
+
+function renderNotes() {
+  const catOptions = cache.note_categories.map(c => c.nom);
+  ensureFilterOptions("notes-filter-categorie", catOptions);
+  bindSearch("notes-search", renderNotes);
+  const search = (document.getElementById("notes-search").value || "").toLowerCase();
+  const fCat = document.getElementById("notes-filter-categorie").value;
+  let rows = [...cache.notes].sort((a, b) => (b.date_modif || b.date_creation || "").localeCompare(a.date_modif || a.date_creation || ""));
+  if (fCat) rows = rows.filter(n => n.categorie === fCat);
+  if (search) rows = rows.filter(n => (n.titre || "").toLowerCase().includes(search));
+  const tbody = document.getElementById("notes-tbody");
+  tbody.innerHTML = rows.length ? rows.map(n => `
+    <tr>
+      <td>${n.titre || "—"}</td>
+      <td>${n.categorie || "—"}</td>
+      <td class="row-actions">
+        <button title="Éditer" onclick="openNoteEditor(${n.id})">✎</button>
+        <button title="Exporter en PDF" onclick="exportNotePDF(${n.id})">⬇</button>
+        <button title="Voir les liens" onclick="openNoteLiens(${n.id})">🔗</button>
+        <button title="Supprimer" onclick="confirmDelete('notes', ${n.id}, renderNotes)">🗑</button>
+      </td>
+    </tr>`).join("") : `<tr class="empty-row"><td colspan="3">Aucune note — clique sur « Nouvelles notes »</td></tr>`;
+}
+
+function fillNoteCategorieSelect(selected) {
+  const sel = document.getElementById("note-categorie");
+  sel.innerHTML = `<option value="">— Sans catégorie —</option>` + cache.note_categories.map(c => `<option value="${escapeAttr(c.nom)}" ${c.nom === selected ? "selected" : ""}>${c.nom}</option>`).join("");
+}
+function renderNoteLiensList() {
+  const el = document.getElementById("note-liens-list");
+  const existing = noteState.liens.map((l, i) => `<span class="lien-chip">📎 ${l.nom} <button type="button" onclick="removeNoteLien(${i})">✕</button></span>`).join("");
+  const pending = noteState.newFiles.map((f, i) => `<span class="lien-chip">🆕 ${f.name} <button type="button" onclick="removeNotePendingFile(${i})">✕</button></span>`).join("");
+  el.innerHTML = existing + pending || `<span style="font-size:12.5px;color:var(--muted);">Aucun fichier lié pour l'instant.</span>`;
+}
+function removeNoteLien(i) { noteState.liens.splice(i, 1); renderNoteLiensList(); }
+function removeNotePendingFile(i) { noteState.newFiles.splice(i, 1); renderNoteLiensList(); }
+
+function openNoteEditor(id) {
+  const row = id ? findNote(id) : {};
+  noteState = { id: id || null, liens: Array.isArray(row.liens) ? JSON.parse(JSON.stringify(row.liens)) : [], newFiles: [] };
+  document.getElementById("note-titre").value = row.titre || "";
+  fillNoteCategorieSelect(row.categorie);
+  document.getElementById("note-contenu").value = row.contenu || "";
+  document.getElementById("note-liens-input").value = "";
+  renderNoteLiensList();
+  document.getElementById("note-editor").classList.add("open");
+}
+function closeNoteEditor() { document.getElementById("note-editor").classList.remove("open"); }
+
+async function saveNoteEditor() {
+  const titre = document.getElementById("note-titre").value.trim();
+  if (!titre) { showToast("Le titre est obligatoire"); return; }
+  const categorie = document.getElementById("note-categorie").value || null;
+  const contenu = document.getElementById("note-contenu").value;
+  const values = { titre, categorie, contenu, date_modif: nowStr() };
+  let saved = noteState.id ? await updateRow("notes", noteState.id, { ...values, liens: noteState.liens }) : await insertRow("notes", { ...values, liens: noteState.liens });
+  if (!saved) return;
+  if (noteState.newFiles.length) {
+    const liens = [...noteState.liens];
+    for (const file of noteState.newFiles) {
+      const path = `${currentUser.id}/notes-${saved.id}-${Date.now()}-${file.name}`;
+      const { error } = await sb.storage.from("devis-signes").upload(path, file, { upsert: true });
+      if (!error) liens.push({ nom: file.name, path }); else showToast("Erreur envoi fichier : " + file.name);
+    }
+    await updateRow("notes", saved.id, { liens });
+  }
+  showToast(noteState.id ? "Note enregistrée" : "Note créée");
+  if (!noteState.id) clearTableFilters("notes");
+  closeNoteEditor();
+  await refreshAll();
+}
+function openNoteLiens(id) {
+  const n = findNote(id);
+  if (!n) return;
+  const liens = Array.isArray(n.liens) ? n.liens : [];
+  const html = liens.length
+    ? `<table class="data"><tbody>${liens.map(l => `<tr><td>${l.nom}</td><td class="row-actions"><button onclick="downloadAttachment('${l.path}')">⬇ Télécharger</button></td></tr>`).join("")}</tbody></table>`
+    : `<p style="color:var(--muted);">Aucun fichier lié à cette note.</p>`;
+  showInfoModal("Fichiers liés — " + (n.titre || ""), html);
+}
+function exportNotePDF(id) {
+  const n = findNote(id);
+  if (!n) return;
+  if (!window.jspdf) { showToast("Générateur PDF indisponible (hors-ligne)"); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(16); doc.text(n.titre || "Note", 20, 22);
+  if (n.categorie) { doc.setFontSize(10); doc.setTextColor(120); doc.text("Catégorie : " + n.categorie, 20, 30); doc.setTextColor(0); }
+  doc.setFontSize(11);
+  const lines = doc.splitTextToSize(n.contenu || "", 170);
+  doc.text(lines, 20, 42);
+  doc.save((n.titre || "note").replace(/\s+/g, "_") + ".pdf");
+}
+
+// ---- Gestion des catégories de notes ----
+function openNoteCategoriesModal() {
+  const html = `<div id="note-cat-list">${renderNoteCategoriesRows()}</div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <input id="new-cat-input" placeholder="Nouvelle catégorie…" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
+      <button type="button" class="btn secondary" id="new-cat-btn">＋ Ajouter</button>
+    </div>`;
+  showInfoModal("Catégories de notes", html);
+  document.getElementById("new-cat-btn").addEventListener("click", addNoteCategory);
+}
+function renderNoteCategoriesRows() {
+  if (!cache.note_categories.length) return `<p style="color:var(--muted);font-size:13px;">Aucune catégorie pour l'instant.</p>`;
+  return `<table class="data"><tbody>${cache.note_categories.map(c => `
+    <tr>
+      <td><input value="${escapeAttr(c.nom)}" data-cat-id="${c.id}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:5px;"></td>
+      <td class="row-actions" style="width:90px;">
+        <button title="Renommer" onclick="renameNoteCategory(${c.id})">✎</button>
+        <button title="Supprimer" onclick="deleteNoteCategory(${c.id})">🗑</button>
+      </td>
+    </tr>`).join("")}</tbody></table>`;
+}
+async function addNoteCategory() {
+  const input = document.getElementById("new-cat-input");
+  const nom = input.value.trim();
+  if (!nom) return;
+  const saved = await insertRow("note_categories", { nom });
+  if (saved) { await refreshCache(); input.value = ""; document.getElementById("note-cat-list").innerHTML = renderNoteCategoriesRows(); renderNotes(); }
+}
+async function renameNoteCategory(id) {
+  const input = document.querySelector(`[data-cat-id="${id}"]`);
+  const nom = input.value.trim();
+  if (!nom) return;
+  const old = cache.note_categories.find(c => c.id === id);
+  const saved = await updateRow("note_categories", id, { nom });
+  if (saved && old && old.nom !== nom) {
+    // met à jour les notes qui utilisaient l'ancien nom de catégorie
+    const toUpdate = cache.notes.filter(n => n.categorie === old.nom);
+    for (const n of toUpdate) await updateRow("notes", n.id, { categorie: nom });
+  }
+  await refreshCache();
+  showToast("Catégorie renommée");
+  document.getElementById("note-cat-list").innerHTML = renderNoteCategoriesRows();
+  renderNotes();
+}
+async function deleteNoteCategory(id) {
+  if (!confirm("Supprimer cette catégorie ? Les notes associées perdront leur catégorie.")) return;
+  const old = cache.note_categories.find(c => c.id === id);
+  await deleteRow("note_categories", id);
+  if (old) {
+    const toUpdate = cache.notes.filter(n => n.categorie === old.nom);
+    for (const n of toUpdate) await updateRow("notes", n.id, { categorie: null });
+  }
+  await refreshCache();
+  showToast("Catégorie supprimée");
+  document.getElementById("note-cat-list").innerHTML = renderNoteCategoriesRows();
+  renderNotes();
+}
+
+// ========================================================================
 //  MODAL GENERIQUE
 // ========================================================================
 function escapeAttr(v) { return String(v).replace(/"/g, "&quot;"); }
@@ -1446,6 +1770,8 @@ const PAGE_FILTERS = {
   commandes: ["commande-filter-statut", "commande-search"],
   grille_tarifaire: ["grille-search"],
   prospects: ["prospect-filter-statut"],
+  prestataires: ["prestataire-filter-type"],
+  notes: ["notes-filter-categorie", "notes-search"],
 };
 function clearTableFilters(table) {
   (PAGE_FILTERS[table] || []).forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
@@ -1637,6 +1963,16 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-new-rdv").addEventListener("click", () => openRdvDialog(null));
   document.getElementById("btn-new-grille").addEventListener("click", () => openGrilleDialog(null));
   document.getElementById("btn-new-commande").addEventListener("click", () => openCommandeDialog(null));
+  document.getElementById("btn-new-prestataire").addEventListener("click", () => openPrestataireDialog(null));
+  document.getElementById("btn-new-note").addEventListener("click", () => openNoteEditor(null));
+  document.getElementById("btn-note-categories").addEventListener("click", openNoteCategoriesModal);
+  document.getElementById("note-close").addEventListener("click", closeNoteEditor);
+  document.getElementById("note-save").addEventListener("click", saveNoteEditor);
+  document.getElementById("note-liens-input").addEventListener("change", (e) => {
+    noteState.newFiles.push(...Array.from(e.target.files));
+    e.target.value = "";
+    renderNoteLiensList();
+  });
 
   document.getElementById("modal-cancel").addEventListener("click", closeModal);
   // NB : le bouton "Enregistrer" utilise la propriété onclick (définie dans openModal/
