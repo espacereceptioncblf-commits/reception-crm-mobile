@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Gestion Réception — CRM salle de réception</title>
 <link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <meta name="theme-color" content="#22252E">
 <style>
   :root{
@@ -23,7 +26,7 @@
     transition:background-color .2s ease, border-color .2s ease, color .2s ease;
   }
   *{box-sizing:border-box;}
-  body{margin:0;font-family:Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);}
+  body{margin:0;font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);}
   button{font-family:inherit;cursor:pointer;}
   input,select,textarea{font-family:inherit;}
 
@@ -128,8 +131,11 @@
   .cal-cell.empty{background:transparent;border:none;cursor:default;}
   .cal-cell.today{background:var(--accent);color:#fff;}
   .cal-cell.selected{outline:2px solid var(--accent);}
-  .cal-cell .evt-dot{font-size:10.5px;margin-top:4px;color:var(--accent);}
-  .cal-cell.today .evt-dot{color:#fff;}
+  .cal-cell .evt-dots{display:flex;gap:3px;flex-wrap:wrap;margin-top:5px;}
+  .cal-cell .evt-dots span{width:6px;height:6px;border-radius:50%;display:inline-block;}
+  .cal-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:var(--muted);}
+  .cal-legend span{display:inline-flex;align-items:center;gap:5px;}
+  .cal-legend i{width:8px;height:8px;border-radius:50%;display:inline-block;}
   .cal-day-panel{margin-top:16px;}
   .cal-year-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
   .cal-year-month{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer;}
@@ -159,7 +165,12 @@
   .lien-chip{display:inline-flex;align-items:center;gap:6px;background:#F3F2EE;border:1px solid var(--border);border-radius:14px;padding:5px 10px;font-size:12px;margin:0 6px 6px 0;}
   .lien-chip button{background:none;border:none;color:var(--danger);font-size:12px;padding:0;}
 
-  .toast{position:fixed;bottom:22px;right:22px;background:var(--text);color:#fff;padding:12px 18px;border-radius:7px;font-size:13px;opacity:0;transform:translateY(8px);transition:.25s;z-index:90;max-width:80vw;}
+  .toast{position:fixed;bottom:22px;right:22px;background:#20222A;color:#fff;padding:11px 18px;border-radius:8px;font-size:13px;opacity:0;transform:translateY(8px);transition:.25s;z-index:90;max-width:80vw;display:flex;align-items:center;gap:10px;border-left:4px solid var(--muted);}
+  .toast.toast-success{border-left-color:var(--success);}
+  .toast.toast-error{border-left-color:var(--danger);}
+  .toast-icon{display:flex;flex-shrink:0;}
+  .toast.toast-success .toast-icon{color:var(--success);}
+  .toast.toast-error .toast-icon{color:var(--danger);}
   .toast.show{opacity:1;transform:translateY(0);}
   .warn-banner{background:#FDF3E3;border:1px solid var(--warning);color:#7a5a12;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;}
 
@@ -462,6 +473,7 @@
             </div>
             <div class="cal-grid" id="cal-grid"></div>
             <div class="cal-year-grid" id="cal-year-grid" style="display:none;"></div>
+            <div class="cal-legend" id="cal-legend"></div>
           </div>
           <div class="panel cal-day-panel">
             <h3 id="cal-day-lbl">Évènements du jour</h3>

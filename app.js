@@ -161,10 +161,13 @@ function daysUntil(iso) {
   const a = new Date(iso + "T00:00:00"), b = new Date(todayStr() + "T00:00:00");
   return Math.round((a - b) / 86400000);
 }
-function showToast(msg) {
+function showToast(msg, type) {
+  if (!type) type = /erreur|échec|obligatoire|introuvable|indisponible|impossible/i.test(msg) ? "error" : "success";
   const t = document.getElementById("toast");
-  t.textContent = msg; t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), 2600);
+  t.innerHTML = `<span class="toast-icon">${icon(type === "error" ? "alert-triangle" : "check", 16)}</span><span>${msg}</span>`;
+  t.className = "toast toast-" + type + " show";
+  clearTimeout(t._hideTimer);
+  t._hideTimer = setTimeout(() => t.classList.remove("show"), 2600);
 }
 function badge(text, color) {
   if (!text) return "";
@@ -1444,10 +1447,19 @@ function openCommandeDialog(id) {
 // ========================================================================
 const MOIS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 const DOW_FR = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
+const TYPE_EVENEMENT_COLORS = {
+  "Mariage": "#C97FA6", "Anniversaire": "#4F7FE0", "Baptême": "#3FA772", "Séminaire": "#D99A2B",
+};
+function eventTypeColor(e) { return TYPE_EVENEMENT_COLORS[e.type_evenement] || "#9297A3"; }
+function calLegendHtml() {
+  const items = [...TYPES_EVENEMENT, "Autre"];
+  return items.map(t => `<span><i style="background:${TYPE_EVENEMENT_COLORS[t] || "#9297A3"};"></i>${t}</span>`).join("");
+}
 function renderCalendrier() {
   document.getElementById("cal-grid").style.display = calState.view === "month" ? "grid" : "none";
   document.getElementById("cal-year-grid").style.display = calState.view === "year" ? "grid" : "none";
   document.getElementById("cal-view-select").value = calState.view;
+  document.getElementById("cal-legend").innerHTML = calLegendHtml();
   if (calState.view === "year") { renderCalendrierYear(); return; }
   renderCalendrierMonth();
 }
@@ -1463,7 +1475,7 @@ function renderCalendrierYear() {
   document.getElementById("cal-year-grid").innerHTML = MOIS_FR.map((mLabel, i) => {
     const m = i + 1;
     const evts = (eventsByMonth[m] || []).sort((a, b) => (a.date_evenement || "").localeCompare(b.date_evenement || ""));
-    const items = evts.slice(0, 4).map(e => `<div class="yc-item">${e.date_evenement.slice(8, 10)} — ${contactLabel(findContact(e.contact_id))}</div>`).join("");
+    const items = evts.slice(0, 4).map(e => `<div class="yc-item"><i style="width:6px;height:6px;border-radius:50%;background:${eventTypeColor(e)};display:inline-block;margin-right:5px;"></i>${e.date_evenement.slice(8, 10)} — ${contactLabel(findContact(e.contact_id))}</div>`).join("");
     return `<div class="cal-year-month" onclick="goToCalMonth(${year},${m})">
       <h4>${mLabel}</h4>
       <div class="yc-count">${evts.length} évènement${evts.length > 1 ? "s" : ""}</div>
@@ -1491,8 +1503,9 @@ function renderCalendrierMonth() {
   for (let day = 1; day <= daysInMonth; day++) {
     const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const isToday = iso === todayIso, isSelected = iso === calState.selected;
-    const n = eventsByDay[day] ? eventsByDay[day].length : 0;
-    html += `<div class="cal-cell ${isToday ? "today" : ""} ${isSelected ? "selected" : ""}" onclick="selectCalDay('${iso}')"><div>${day}</div>${n ? `<div class="evt-dot">● ${n} évt</div>` : ""}</div>`;
+    const dayEvents = eventsByDay[day] || [];
+    const dots = dayEvents.slice(0, 6).map(e => `<span style="background:${eventTypeColor(e)};"></span>`).join("");
+    html += `<div class="cal-cell ${isToday ? "today" : ""} ${isSelected ? "selected" : ""}" onclick="selectCalDay('${iso}')"><div>${day}</div>${dots ? `<div class="evt-dots">${dots}</div>` : ""}</div>`;
   }
   document.getElementById("cal-grid").innerHTML = html;
   if (!calState.selected || !calState.selected.startsWith(`${year}-${String(month).padStart(2, "0")}`)) {
@@ -1506,7 +1519,7 @@ function renderCalDay() {
   if (!calState.selected) { lbl.textContent = "Évènements du jour"; tbody.innerHTML = `<tr class="empty-row"><td colspan="4">Sélectionne un jour</td></tr>`; return; }
   lbl.textContent = "Évènements du " + fmtDateFR(calState.selected);
   const rows = cache.evenements.filter(e => e.date_evenement === calState.selected).sort((a, b) => (a.heure_debut || "").localeCompare(b.heure_debut || ""));
-  tbody.innerHTML = rows.length ? rows.map(e => `<tr onclick="openEvenementDialog(${e.id})" style="cursor:pointer;"><td>${e.heure_debut || "—"}</td><td>${eventLabel(e)}</td><td>${e.type_evenement || ""}</td><td>${badge(e.statut, STATUT_COLORS[e.statut])}</td></tr>`).join("") : `<tr class="empty-row"><td colspan="4">Aucun évènement — clique pour en ajouter un</td></tr>`;
+  tbody.innerHTML = rows.length ? rows.map(e => `<tr onclick="openEvenementDialog(${e.id})" style="cursor:pointer;"><td>${e.heure_debut || "—"}</td><td>${eventLabel(e)}</td><td><span style="display:inline-flex;align-items:center;gap:6px;"><i style="width:8px;height:8px;border-radius:50%;background:${eventTypeColor(e)};display:inline-block;"></i>${e.type_evenement || "—"}</span></td><td>${badge(e.statut, STATUT_COLORS[e.statut])}</td></tr>`).join("") : `<tr class="empty-row"><td colspan="4">Aucun évènement — clique pour en ajouter un</td></tr>`;
 }
 
 // ========================================================================
