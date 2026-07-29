@@ -9,17 +9,17 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ---- 2) CONSTANTES ----
-const TYPES_EVENEMENT = ["Mariage", "Anniversaire", "Baptême", "Séminaire", "Autre"];
+const TYPES_EVENEMENT = ["Mariage", "Anniversaire", "Baptême", "Séminaire"];
 const STATUTS_PROSPECT = ["Nouveau", "Contacté", "Qualifié", "Devis envoyé", "Converti", "Perdu"];
 const STATUTS_DEVIS = ["En attente", "Envoyé", "Accepté", "Refusé", "Expiré"];
 const STATUTS_FACTURE = ["Brouillon", "Envoyée", "Payée", "Partiellement payée", "En retard", "Annulée"];
-const STATUTS_EVENEMENT = ["Premier contact", "Option", "Confirmé", "Terminé", "Annulé"];
+const STATUTS_EVENEMENT = ["Premier contact", "Option", "Confirmé", "Passé", "Annulé"];
 const STATUTS_TODO = ["À faire", "En cours", "Terminé"];
 const STATUTS_RDV = ["Prévu", "Confirmé", "Effectué", "Annulé"];
 const STATUTS_COMMANDE = ["À commander", "Commandé", "Reçu"];
 const PRIORITES = ["Basse", "Normale", "Haute", "Urgente"];
 const SOURCES_PROSPECT = ["Site web", "Téléphone", "Bouche à oreille", "Réseaux sociaux", "Salon", "Recommandation", "Autre"];
-const CATEGORIES_CONTACT = ["Client", "Prospect", "Fournisseur", "Partenaire", "Autre"];
+const CATEGORIES_CONTACT = ["Client", "Prospect", "Fournisseur", "Prestataire", "Autre"];
 const PROVENANCES = ["mariage.net", "sms", "mail", "site internet", "1001salles", "contact direct"];
 const TYPES_PRESTATION = ["Location", "Clés en main prestataires", "Clés en main nous"];
 const FORMULES = ["Clef en main", "Location salle"];
@@ -46,10 +46,10 @@ const STATUT_COLORS = {
   "En attente": "var(--muted)", "Envoyé": "var(--warning)", "Accepté": "var(--success)",
   "Refusé": "var(--danger)", "Expiré": "var(--danger)",
   "Premier contact": "var(--info)", "Option": "var(--warning)", "Confirmé": "var(--success)",
-  "Terminé": "var(--muted)", "Annulé": "var(--danger)",
+  "Terminé": "var(--muted)", "Passé": "var(--muted)", "Annulé": "var(--danger)",
   "À faire": "var(--info)", "En cours": "var(--warning)",
   "Prévu": "var(--info)", "Effectué": "var(--success)",
-  "Client": "var(--success)", "Prospect": "var(--info)", "Partenaire": "var(--accent)",
+  "Client": "var(--success)", "Prospect": "var(--info)", "Prestataire": "var(--accent)",
   "Fournisseur": "var(--warning)", "Autre": "var(--muted)",
   "Envoyée": "var(--warning)", "Payée": "var(--success)", "Partiellement payée": "var(--info)",
   "En retard": "var(--danger)", "Annulée": "var(--danger)",
@@ -259,9 +259,14 @@ function todoLieALabel(t) {
   if (t.commande_id) { const c = findCommande(t.commande_id); return c ? "📦 " + (c.article || ("Commande #" + c.id)) : "—"; }
   return t.categorie || "—";
 }
+function eventDateLabel(e) {
+  if (e.date_flexible) return fmtMoisFR(e.mois_seul);
+  if (e.date_fin && e.date_fin !== e.date_evenement) return fmtDateFR(e.date_evenement) + " → " + fmtDateFR(e.date_fin);
+  return fmtDateFR(e.date_evenement);
+}
 function eventLabel(e) {
   const c = findContact(e.contact_id);
-  const d = e.date_flexible ? fmtMoisFR(e.mois_seul) : fmtDateFR(e.date_evenement);
+  const d = eventDateLabel(e);
   return [d, contactLabel(c)].filter(x => x && x !== "—").join(" · ") || (e.type_evenement || "Évènement");
 }
 
@@ -467,7 +472,15 @@ function openEventRecap(id) {
   const dev = cache.devis.find(d => d.evenement_id === e.id);
   const fac = cache.factures.find(f => (e.facture_id && f.id === e.facture_id) || (dev && f.devis_id === dev.id));
   const taches = cache.todos.filter(t => t.evenement_id === e.id);
-  const dateTxt = e.date_flexible ? fmtMoisFR(e.mois_seul) + " (flexible)" : fmtDateFR(e.date_evenement);
+  const dateTxt = eventDateLabel(e);
+
+  // Historique = entrées manuelles + RDV liés déjà passés, fusionnés et triés
+  const today = todayStr();
+  const manuel = (e.historique || []).map(h => ({ date: h.date, texte: h.texte }));
+  const rdvPasses = cache.rdv.filter(r => r.evenement_id === e.id && r.date_rdv && r.date_rdv < today)
+    .map(r => ({ date: r.date_rdv, texte: "🤝 RDV" + (r.objet ? " — " + r.objet : "") + (r.notes ? " (" + r.notes + ")" : "") }));
+  const historique = [...manuel, ...rdvPasses].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
   const line = (l, v) => `<tr><td style="color:var(--muted);width:42%;">${l}</td><td>${v || "—"}</td></tr>`;
   const html = `
     <table class="data" style="margin-bottom:16px;"><tbody>
@@ -483,14 +496,65 @@ function openEventRecap(id) {
       ${line("Statut", e.statut)}
       ${line("Devis", dev ? (dev.numero + " · " + dev.statut) : "—")}
       ${line("Facture", fac ? (fac.numero + " · " + fac.statut) : "—")}
-      ${line("Dernière action", e.derniere_action)}
+      ${line("Acompte reçu", e.acompte_recu === "Oui" ? "Oui" + (e.montant_acompte_recu ? " — " + e.montant_acompte_recu + " €" : "") : "Non")}
       ${line("Prochain RDV", fmtDateFR(e.prochain_rdv))}
     </tbody></table>
-    <h3 style="font-size:14px;margin:0 0 8px;">📝 Notes</h3>
-    <div style="font-size:16px;line-height:1.5;white-space:pre-wrap;background:#FAFAF8;border:1px solid var(--border);border-radius:8px;padding:12px;min-height:50px;">${e.notes || "—"}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px;">
+      <h3 style="font-size:14px;margin:0;">🕓 Historique des actions</h3>
+      <button class="btn secondary" type="button" onclick="addHistoriqueEntry(${e.id})">＋ Ajouter</button>
+    </div>
+    <table class="data" style="margin-bottom:16px;"><tbody>${historique.length ? historique.map(h => `<tr><td style="white-space:nowrap;color:var(--muted);width:110px;">${fmtDateFR(h.date)}</td><td>${h.texte}</td></tr>`).join("") : `<tr class="empty-row"><td colspan="2">Aucune entrée</td></tr>`}</tbody></table>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:0 0 8px;">
+      <h3 style="font-size:14px;margin:0;">📝 Notes</h3>
+      <button class="btn secondary" type="button" onclick="openNotesPanel('Notes — ' + '${(contactLabel(c) || 'évènement').replace(/'/g, "\\'")}', 'evenements', ${e.id}, ${JSON.stringify(e.notes || "")}, () => openEventRecap(${e.id}))">✎ Ouvrir en grand</button>
+    </div>
+    <div style="font-size:14px;line-height:1.5;white-space:pre-wrap;background:#FAFAF8;border:1px solid var(--border);border-radius:8px;padding:12px;min-height:50px;">${e.notes || "—"}</div>
     <h3 style="font-size:14px;margin:16px 0 8px;">✅ Tâches liées</h3>
     <table class="data"><tbody>${taches.length ? taches.map(t => `<tr><td>${t.titre}</td><td>${badge(t.statut, STATUT_COLORS[t.statut])}</td></tr>`).join("") : `<tr class="empty-row"><td colspan="2">Aucune</td></tr>`}</tbody></table>`;
   showInfoModal("Fiche récap évènement", html);
+  const oldBtn = document.getElementById("modal-print-btn");
+  if (oldBtn) oldBtn.remove();
+  const printBtn = document.createElement("button");
+  printBtn.id = "modal-print-btn";
+  printBtn.className = "btn secondary"; printBtn.type = "button"; printBtn.textContent = "🖨 Imprimer";
+  printBtn.onclick = () => printEventRecap(e.id);
+  document.getElementById("modal-cancel").insertAdjacentElement("beforebegin", printBtn);
+}
+
+async function addHistoriqueEntry(eventId) {
+  const texte = prompt("Nouvelle entrée d'historique :");
+  if (!texte) return;
+  const e = findEvenement(eventId);
+  const historique = [...(e.historique || []), { date: todayStr(), texte }];
+  const saved = await updateRow("evenements", eventId, { historique });
+  if (saved) { await refreshCache(); openEventRecap(eventId); }
+}
+
+function printEventRecap(id) {
+  const e = findEvenement(id);
+  if (!e) return;
+  const c = findContact(e.contact_id);
+  const w = window.open("", "_blank");
+  if (!w) { showToast("Autorise les pop-ups pour imprimer"); return; }
+  const line = (l, v) => `<tr><td style="color:#8A8F98;width:40%;padding:6px 0;">${l}</td><td style="padding:6px 0;">${v || "—"}</td></tr>`;
+  w.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Fiche récap — ${eventLabel(e)}</title>
+    <style>body{font-family:Helvetica,Arial,sans-serif;padding:36px;max-width:720px;margin:0 auto;color:#20222A;}
+    table{width:100%;border-collapse:collapse;} h1{font-size:20px;} h2{font-size:14px;margin-top:26px;}</style></head><body>
+    <h1>Fiche récap évènement</h1>
+    <table>
+      ${line("Date", eventDateLabel(e))}
+      ${line("Contact", contactLabel(c))}
+      ${line("Téléphone", c && c.telephone)}
+      ${line("Email", c && c.email)}
+      ${line("Type d'évènement", e.type_evenement)}
+      ${line("Invités", e.nb_invites)}
+      ${line("Statut", e.statut)}
+      ${line("Acompte reçu", e.acompte_recu === "Oui" ? "Oui" + (e.montant_acompte_recu ? " — " + e.montant_acompte_recu + " €" : "") : "Non")}
+    </table>
+    <h2>Notes</h2><p style="white-space:pre-wrap;">${e.notes || "—"}</p>
+    </body></html>`);
+  w.document.close(); w.focus();
+  setTimeout(() => w.print(), 300);
 }
 
 // ========================================================================
@@ -518,8 +582,30 @@ function renderContacts() {
         <button title="Historique devis / factures" onclick="openContactHistory(${c.id})">📁</button>
         <button onclick="openContactDialog(${c.id})">✎</button>
         <button onclick="confirmDelete('contacts', ${c.id}, renderContacts)">🗑</button>
+        <button title="Fiche contact" onclick="openContactFiche(${c.id})">⋯</button>
       </td>
     </tr>`).join("") : `<tr class="empty-row"><td colspan="7">Aucun contact</td></tr>`;
+}
+
+function openContactFiche(id) {
+  const c = cache.contacts.find(x => x.id === id);
+  if (!c) return;
+  const line = (l, v) => `<tr><td style="color:var(--muted);width:42%;">${l}</td><td>${v || "—"}</td></tr>`;
+  const html = `
+    <table class="data"><tbody>
+      ${line("Nom complet", contactLabel(c))}
+      ${line("Catégorie", c.categorie)}
+      ${line("Société", c.societe)}
+      ${line("Poste", c.poste)}
+      ${line("Email", c.email)}
+      ${line("Téléphone", c.telephone)}
+      ${line("Adresse", c.adresse)}
+      ${line("Provenance", c.provenance)}
+      ${line("Type d'évènement d'intérêt", c.type_evenement_interet)}
+    </tbody></table>
+    <h3 style="font-size:14px;margin:16px 0 8px;">📝 Notes</h3>
+    <div style="font-size:14px;line-height:1.5;white-space:pre-wrap;background:#FAFAF8;border:1px solid var(--border);border-radius:8px;padding:12px;min-height:50px;">${c.notes || "—"}</div>`;
+  showInfoModal("Fiche contact", html);
 }
 
 function openContactDialog(id) {
@@ -1005,21 +1091,25 @@ function renderEvenements() {
   ensureFilterOptions("evenement-filter-type", TYPES_EVENEMENT);
   ensureFilterOptions("evenement-filter-statut", STATUTS_EVENEMENT);
   ensureFilterOptions("evenement-filter-mois", MOIS_FR.map((m, i) => ({ value: String(i + 1).padStart(2, "0"), label: m })));
+  const annees = [...new Set(cache.evenements.map(e => (e.date_evenement || "").slice(0, 4)).filter(Boolean))].sort().reverse();
+  ensureFilterOptions("evenement-filter-annee", annees);
   const fType = document.getElementById("evenement-filter-type").value;
   const fMois = document.getElementById("evenement-filter-mois").value;
+  const fAnnee = document.getElementById("evenement-filter-annee").value;
   const fStatut = document.getElementById("evenement-filter-statut").value;
 
   let rows = [...cache.evenements].sort((a, b) => (a.date_evenement || "9999").localeCompare(b.date_evenement || "9999"));
   if (fType) rows = rows.filter(e => e.type_evenement === fType);
   if (fStatut) rows = rows.filter(e => e.statut === fStatut);
   if (fMois) rows = rows.filter(e => ((e.date_evenement || e.mois_seul || "") + "").slice(5, 7) === fMois);
+  if (fAnnee) rows = rows.filter(e => ((e.date_evenement || e.mois_seul || "") + "").slice(0, 4) === fAnnee);
 
   const tbody = document.getElementById("evenement-tbody");
   tbody.innerHTML = rows.length ? rows.map(e => {
     const c = findContact(e.contact_id);
     const dev = cache.devis.find(d => d.evenement_id === e.id);
     const fac = cache.factures.find(f => (e.facture_id && f.id === e.facture_id) || (dev && f.devis_id === dev.id));
-    const dateTxt = e.date_flexible ? (fmtMoisFR(e.mois_seul) + " (flex.)") : fmtDateFR(e.date_evenement);
+    const dateTxt = eventDateLabel(e);
     const nb = (e.nb_invites != null ? e.nb_invites : "—") + (e.nb_precision === "Approximatif" ? " ~" : "");
     return `<tr>
       <td>${dateTxt || "—"}</td>
@@ -1042,12 +1132,15 @@ function renderEvenements() {
 
 function openEvenementDialog(id, defaultDate) {
   const row = id ? cache.evenements.find(e => e.id === id) : {};
+  let adefinirFlag = false;
   openModal({
     title: id ? "Modifier l'évènement" : "Nouvel évènement",
     table: "evenements", id,
     fields: [
       { key: "date_evenement", label: "Date", type: "date", value: row.date_evenement || defaultDate },
-      { key: "date_flexible", label: "Date flexible (mois seulement)", type: "checkbox", value: row.date_flexible },
+      { key: "plusieurs_jours", label: "Sur plusieurs jours", type: "checkbox", value: !!row.date_fin },
+      { key: "date_fin", label: "Date de fin", type: "date", value: row.date_fin },
+      { key: "date_flexible", label: "Date flexible", type: "checkbox", value: row.date_flexible },
       { key: "mois_seul", label: "Mois (si date flexible)", type: "month", value: row.mois_seul },
       { key: "contact_id", label: "Contact", type: "select-raw", optionsHtml: `<option value="">—</option>` + contactOptionsHtml(row.contact_id), value: row.contact_id, numeric: true },
       { key: "provenance", label: "Provenance (reprise du contact)", type: "text", value: row.provenance },
@@ -1060,9 +1153,12 @@ function openEvenementDialog(id, defaultDate) {
       { key: "statut", label: "Statut", type: "select", options: STATUTS_EVENEMENT, value: row.statut || "Premier contact" },
       { key: "devis_id", label: "Devis lié", type: "select-raw", optionsHtml: `<option value="">—</option>` + devisOptionsHtml(row.devis_id), value: row.devis_id, numeric: true },
       { key: "facture_id", label: "Facture liée", type: "select-raw", optionsHtml: `<option value="">—</option>` + factureOptionsHtml(row.facture_id), value: row.facture_id, numeric: true },
+      { key: "acompte_recu", label: "Acompte reçu", type: "select", options: ["Non", "Oui"], value: row.acompte_recu || "Non" },
+      { key: "montant_acompte_recu", label: "Montant acompte reçu (€)", type: "number", value: row.montant_acompte_recu },
       { key: "budget", label: "Budget (€)", type: "number", value: row.budget },
       { key: "derniere_action", label: "Dernière action", type: "text", value: row.derniere_action },
       { key: "prochain_rdv", label: "Prochain RDV", type: "date", value: row.prochain_rdv },
+      { key: "prochain_rdv_adefinir", label: "Prochain RDV à définir (crée une tâche « Prendre rendez-vous »)", type: "checkbox", value: false },
       { key: "notes", label: "Notes", type: "textarea", value: row.notes },
     ],
     onRender: (form) => {
@@ -1070,9 +1166,23 @@ function openEvenementDialog(id, defaultDate) {
       form.elements["nb_adultes"].addEventListener("input", calc);
       form.elements["nb_enfants"].addEventListener("input", calc);
       form.elements["contact_id"].addEventListener("change", () => { const c = findContact(Number(form.elements["contact_id"].value)); if (c && c.provenance && !form.elements["provenance"].value) form.elements["provenance"].value = c.provenance; });
+      const toggleDateFin = () => { form.elements["date_fin"].closest(".field").style.display = form.elements["plusieurs_jours"].checked ? "" : "none"; };
+      form.elements["plusieurs_jours"].addEventListener("change", toggleDateFin);
+      toggleDateFin();
       calc();
     },
-    onSaved: refreshAll,
+    beforeSave: (values) => {
+      adefinirFlag = !!values.prochain_rdv_adefinir;
+      delete values.prochain_rdv_adefinir;
+      if (!values.plusieurs_jours) values.date_fin = null;
+      delete values.plusieurs_jours;
+    },
+    onSaved: async (saved) => {
+      if (adefinirFlag) {
+        await insertRow("todos", { titre: "Prendre rendez-vous", evenement_id: saved.id, priorite: "Basse", statut: "À faire" });
+      }
+      await refreshAll();
+    },
   });
 }
 
@@ -1109,6 +1219,7 @@ function openRdvDialog(id) {
     fields: [
       { key: "objet", label: "Objet", type: "text", value: row.objet },
       { key: "contact_id", label: "Contact", type: "select-raw", optionsHtml: `<option value="">—</option>` + contactOptionsHtml(row.contact_id), value: row.contact_id, numeric: true },
+      { key: "evenement_id", label: "Lié à un évènement", type: "select-raw", optionsHtml: `<option value="">—</option>` + evenementOptionsHtml(row.evenement_id), value: row.evenement_id, numeric: true },
       { key: "date_rdv", label: "Date", type: "date", value: row.date_rdv },
       { key: "heure", label: "Heure", type: "time", value: row.heure },
       { key: "statut", label: "Statut", type: "select", options: STATUTS_RDV, value: row.statut || "Prévu" },
@@ -1262,6 +1373,22 @@ const PAGE_FILTERS = {
 function clearTableFilters(table) {
   (PAGE_FILTERS[table] || []).forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
 }
+function openNotesPanel(title, table, id, value, onSaved) {
+  document.getElementById("notes-panel-title").textContent = title;
+  document.getElementById("notes-panel-textarea").value = value || "";
+  document.getElementById("notes-panel").classList.add("open");
+  document.getElementById("notes-panel-overlay").classList.add("open");
+  document.getElementById("notes-panel-save").onclick = async () => {
+    const val = document.getElementById("notes-panel-textarea").value;
+    const saved = await updateRow(table, id, { notes: val });
+    if (saved) { showToast("Notes enregistrées"); closeNotesPanel(); if (onSaved) await onSaved(); }
+  };
+}
+function closeNotesPanel() {
+  document.getElementById("notes-panel").classList.remove("open");
+  document.getElementById("notes-panel-overlay").classList.remove("open");
+}
+
 function openModal({ title, table, id, fields, onSaved, onRender, beforeSave }) {
   modalContext = { table, id, fields, onSaved, onRender, beforeSave };
   document.getElementById("modal-title").textContent = title;
@@ -1341,6 +1468,8 @@ function closeModal() {
   document.getElementById("modal-overlay").classList.remove("open");
   document.getElementById("modal-save").textContent = "Enregistrer";
   document.getElementById("modal-save").onclick = saveModal;
+  const oldBtn = document.getElementById("modal-print-btn");
+  if (oldBtn) oldBtn.remove();
   modalContext = null;
 }
 async function saveModal() {
@@ -1409,6 +1538,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("logout-btn").addEventListener("click", handleLogout);
   document.getElementById("menu-toggle-btn").addEventListener("click", openMobileMenu);
   document.getElementById("sidebar-overlay").addEventListener("click", closeMobileMenu);
+  document.getElementById("notes-panel-close").addEventListener("click", closeNotesPanel);
+  document.getElementById("notes-panel-cancel").addEventListener("click", closeNotesPanel);
+  document.getElementById("notes-panel-overlay").addEventListener("click", closeNotesPanel);
 
   document.querySelectorAll(".nav-item").forEach(el => el.addEventListener("click", () => showPage(el.dataset.page)));
 

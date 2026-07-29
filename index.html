@@ -135,6 +135,18 @@
   .toast.show{opacity:1;transform:translateY(0);}
   .warn-banner{background:#FDF3E3;border:1px solid var(--warning);color:#7a5a12;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;}
 
+  /* panneau latéral notes (grand format) */
+  .notes-panel-overlay{display:none;position:fixed;inset:0;background:rgba(20,20,20,.45);z-index:70;}
+  .notes-panel-overlay.open{display:block;}
+  .notes-panel{position:fixed;top:0;right:0;bottom:0;width:520px;max-width:92vw;background:#fff;z-index:71;
+    display:flex;flex-direction:column;padding:22px 24px;box-shadow:-4px 0 20px rgba(0,0,0,.2);
+    transform:translateX(100%);transition:transform .25s ease;}
+  .notes-panel.open{transform:translateX(0);}
+  .notes-panel-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+  .notes-panel-head h2{margin:0;font-size:18px;}
+  .notes-panel-head button{background:none;border:none;font-size:18px;color:var(--muted);}
+  .notes-panel textarea{flex:1;width:100%;padding:14px;border:1px solid var(--border);border-radius:8px;font-size:15px;line-height:1.6;resize:none;font-family:inherit;}
+
   .mobile-topbar{display:none;}
   .sidebar-overlay{display:none;}
 
@@ -367,6 +379,7 @@
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
               <select class="filter" id="evenement-filter-type"><option value="">Tous les types</option></select>
               <select class="filter" id="evenement-filter-mois"><option value="">Tous les mois</option></select>
+              <select class="filter" id="evenement-filter-annee"><option value="">Toutes les années</option></select>
               <select class="filter" id="evenement-filter-statut"><option value="">Tous les statuts</option></select>
             </div>
             <button class="btn" id="btn-new-evenement">＋ Nouvel évènement</button>
@@ -430,6 +443,19 @@
 
       </div>
     </div>
+  </div>
+</div>
+
+<div class="notes-panel-overlay" id="notes-panel-overlay"></div>
+<div class="notes-panel" id="notes-panel">
+  <div class="notes-panel-head">
+    <h2 id="notes-panel-title">Notes</h2>
+    <button type="button" id="notes-panel-close">✕</button>
+  </div>
+  <textarea id="notes-panel-textarea"></textarea>
+  <div class="modal-actions">
+    <button class="btn secondary" type="button" id="notes-panel-cancel">Annuler</button>
+    <button class="btn" type="button" id="notes-panel-save">Enregistrer</button>
   </div>
 </div>
 
