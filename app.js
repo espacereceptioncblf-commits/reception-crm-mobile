@@ -676,17 +676,22 @@ function renderDevis() {
     return `<tr>
       <td>${d.numero || "—"}${d.finalise ? " ✅" : ""}</td>
       <td>${e ? eventLabel(e) : "—"}</td>
-      <td>${contactLabel(devisContact(d))}</td>
-      <td>${fmtDateFR(devisDateEvt(d))}</td>
+      <td><input type="date" value="${(d.date_creation || "").slice(0, 10)}" onchange="updateDevisDateCreation(${d.id}, this.value)" style="border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-size:12px;"></td>
       <td>${d.montant_ttc ? d.montant_ttc + " €" : "—"}</td>
       <td>${badge(d.statut, STATUT_COLORS[d.statut])}</td>
       <td class="row-actions">
+        <button title="Aperçu rapide" onclick="generateDevisPDF(${d.id}, true)">👁</button>
         <button title="Éditer le devis" onclick="openDevisEditor(${d.id})">✎</button>
         <button title="Télécharger le PDF" onclick="generateDevisPDF(${d.id})">⬇</button>
         <button title="Créer une facture" onclick="createFactureFromDevis(${d.id})">🧾</button>
         <button onclick="confirmDelete('devis', ${d.id}, renderDevis)">🗑</button>
       </td></tr>`;
-  }).join("") : `<tr class="empty-row"><td colspan="7">Aucun devis</td></tr>`;
+  }).join("") : `<tr class="empty-row"><td colspan="6">Aucun devis</td></tr>`;
+}
+async function updateDevisDateCreation(id, val) {
+  if (!val) return;
+  const saved = await updateRow("devis", id, { date_creation: val });
+  if (saved) { showToast("Date de création mise à jour"); await refreshCache(); }
 }
 
 // Nouveau devis : mini-dialogue (numéro, évènement, statut) puis éditeur
@@ -727,9 +732,17 @@ function openDevisEditor(id) {
   document.getElementById("ed-client").innerHTML =
     `<strong>Client :</strong> ${contactLabel(c)}${c && c.telephone ? " · " + c.telephone : ""}${c && c.email ? " · " + c.email : ""}<br>` +
     `<strong>Évènement :</strong> ${e ? eventLabel(e) : "—"}${devisNbInvites(d) != null ? " · " + devisNbInvites(d) + " invités" : ""}` +
-    `<div style="margin-top:8px;"><label style="font-size:12px;color:var(--muted);">Statut : </label>
+    `<div style="margin-top:8px;display:flex;gap:14px;flex-wrap:wrap;align-items:center;">
+      <span><label style="font-size:12px;color:var(--muted);">Statut : </label>
       <select id="ed-statut" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;">
-      ${STATUTS_DEVIS.map(s => `<option value="${s}" ${s === d.statut ? "selected" : ""}>${s}</option>`).join("")}</select></div>`;
+      ${STATUTS_DEVIS.map(s => `<option value="${s}" ${s === d.statut ? "selected" : ""}>${s}</option>`).join("")}</select></span>
+      <span><label style="font-size:12px;color:var(--muted);">Acompte reçu : </label>
+      <select id="ed-acompte" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;">
+      <option value="Non" ${!d.acompte ? "selected" : ""}>Non</option>
+      <option value="Oui" ${d.acompte ? "selected" : ""}>Oui</option></select></span>
+      <span><label style="font-size:12px;color:var(--muted);">Montant (€) : </label>
+      <input id="ed-montant-acompte" type="number" step="0.01" value="${d.montant_acompte != null ? d.montant_acompte : ""}" style="width:90px;padding:5px 8px;border:1px solid var(--border);border-radius:5px;"></span>
+    </div>`;
   document.getElementById("ed-emetteur").innerHTML =
     `<strong>${EMETTEUR.nom}</strong><br>${EMETTEUR.adresse}<br>${EMETTEUR.siret}<br>${EMETTEUR.email}<br>Tél : ${EMETTEUR.telephone}`;
 
@@ -803,13 +816,16 @@ async function saveDevisEditor(closeAfter) {
   const d = findDevis(edState.id); if (!d) return;
   const tot = editorTotals();
   const newStatut = document.getElementById("ed-statut") ? document.getElementById("ed-statut").value : d.statut;
-  const wasEnvoye = d.statut === "Envoyé";
+  const acompteRecu = document.getElementById("ed-acompte") ? document.getElementById("ed-acompte").value : d.acompte;
+  const montantAcompteRecu = document.getElementById("ed-montant-acompte") ? document.getElementById("ed-montant-acompte").value : d.montant_acompte;
+  const statutChanged = newStatut !== d.statut;
   await updateRow("devis", edState.id, {
     lignes: edState.lignes, montant_ht: tot.ht, tva: null, montant_ttc: tot.ttc, statut: newStatut,
+    acompte: acompteRecu === "Oui", montant_acompte: montantAcompteRecu === "" ? null : Number(montantAcompteRecu),
   });
   await refreshCache();
   const updated = findDevis(edState.id);
-  if (newStatut === "Envoyé" && !wasEnvoye) await createDevisReminders(updated);
+  if (statutChanged && ["Envoyé", "Accepté"].includes(newStatut)) await createDevisReminders(updated);
   showToast("Devis enregistré");
   if (closeAfter) closeDevisEditor(); else { renderCgvPreview(updated); }
   renderPage(currentPage === "devis" ? "devis" : currentPage);
@@ -842,6 +858,7 @@ function openCgvPicker() {
     await refreshCache();
     closeModal();
     const upd = findDevis(edState.id);
+    if (["Envoyé", "Accepté"].includes(upd.statut)) await createDevisReminders(upd);
     renderCgvPreview(upd);
     showToast("Devis finalisé");
     generateDevisPDF(edState.id);
@@ -901,7 +918,7 @@ function drawFooter(doc) {
   doc.text(doc.splitTextToSize(legal, 175), 105, h - 12, { align: "center" });
   doc.setTextColor(0); doc.setFontSize(11);
 }
-function generateDevisPDF(id) {
+function generateDevisPDF(id, preview) {
   const d = findDevis(id);
   if (!d) return;
   if (!window.jspdf) { showToast("Générateur PDF indisponible (hors-ligne)"); return; }
@@ -953,7 +970,8 @@ function generateDevisPDF(id) {
     d.cgv.forEach((c2, i) => { const t = doc.splitTextToSize((i + 1) + ". " + c2, 175); doc.text(t, 20, y); y += t.length * 5 + 1; if (y > 255) { doc.addPage(); y = 20; } });
   }
   drawFooter(doc);
-  doc.save((d.numero || "devis").replace(/\s+/g, "_") + ".pdf");
+  if (preview) window.open(doc.output("bloburl"), "_blank");
+  else doc.save((d.numero || "devis").replace(/\s+/g, "_") + ".pdf");
 }
 
 // ========================================================================

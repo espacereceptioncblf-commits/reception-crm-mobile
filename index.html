@@ -87,7 +87,7 @@
   .due-today{color:var(--danger);font-weight:bold;}
 
   /* modal */
-  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(20,20,20,.45);align-items:center;justify-content:center;z-index:50;padding:20px;}
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(20,20,20,.45);align-items:center;justify-content:center;z-index:65;padding:20px;}
   .modal-overlay.open{display:flex;}
   .modal-box{background:var(--card);border-radius:10px;width:540px;max-width:100%;max-height:90vh;overflow-y:auto;padding:24px 26px;}
   .modal-box h2{margin:0 0 18px;font-size:17px;}
@@ -351,7 +351,7 @@
             <button class="btn" id="btn-new-devis">＋ Nouveau devis</button>
           </div>
           <table class="data">
-            <thead><tr><th>N°</th><th>Évènement</th><th>Contact</th><th>Date évt</th><th>Montant TTC</th><th>Statut</th><th></th></tr></thead>
+            <thead><tr><th>N°</th><th>Évènement</th><th>Date création</th><th>Montant TTC</th><th>Statut</th><th></th></tr></thead>
             <tbody id="devis-tbody"></tbody>
           </table>
         </div>
