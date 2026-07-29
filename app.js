@@ -1317,27 +1317,44 @@ function renderCommande() {
   document.getElementById("commande-fournisseurs").innerHTML = fours.map(a => `<option value="${a.replace(/"/g, "&quot;")}">`).join("");
 
   const tbody = document.getElementById("commande-tbody");
-  tbody.innerHTML = rows.length ? rows.map(c => `
-    <tr>
+  tbody.innerHTML = rows.length ? rows.map(c => {
+    const e = c.evenement_id ? findEvenement(c.evenement_id) : null;
+    return `<tr>
       <td>${c.article || "—"}</td><td>${c.quantite != null ? c.quantite : "—"}</td>
-      <td>${c.fournisseur || "—"}</td><td>${c.categorie || "—"}</td>
+      <td>${c.fournisseur || "—"}</td>
+      <td>${e ? eventLabel(e) : "—"}</td>
+      <td>${e ? eventDateLabel(e) : "—"}</td>
+      <td>${fmtDateFR(c.date_commande) || "—"}</td>
       <td>${badge(c.statut, STATUT_COLORS[c.statut])}</td><td>${c.notes || "—"}</td>
       <td class="row-actions"><button onclick="openCommandeDialog(${c.id})">✎</button><button onclick="confirmDelete('commandes', ${c.id}, renderCommande)">🗑</button></td>
-    </tr>`).join("") : `<tr class="empty-row"><td colspan="7">Aucun article — ajoute ta première commande</td></tr>`;
+    </tr>`;
+  }).join("") : `<tr class="empty-row"><td colspan="9">Aucune commande — ajoute ta première commande</td></tr>`;
 }
 function openCommandeDialog(id) {
   const row = id ? cache.commandes.find(c => c.id === id) : {};
   openModal({
-    title: id ? "Modifier l'article" : "Nouvel article à commander", table: "commandes", id,
+    title: id ? "Modifier la commande" : "Nouvelle commande", table: "commandes", id,
     fields: [
       { key: "article", label: "Article", type: "text", required: true, value: row.article, list: "commande-articles" },
       { key: "quantite", label: "Quantité", type: "number", value: row.quantite },
       { key: "fournisseur", label: "Fournisseur", type: "text", value: row.fournisseur, list: "commande-fournisseurs" },
       { key: "categorie", label: "Catégorie", type: "text", value: row.categorie },
+      { key: "evenement_id", label: "Évènement lié (facultatif)", type: "select-raw", optionsHtml: `<option value="">— Aucun —</option>` + evenementOptionsHtml(row.evenement_id), value: row.evenement_id, numeric: true },
+      { key: "date_commande", label: "Date de commande", type: "date", value: row.date_commande },
       { key: "statut", label: "Statut", type: "select", options: STATUTS_COMMANDE, value: row.statut || "À commander" },
-      { key: "notes", label: "Notes", type: "textarea", value: row.notes },
+      { key: "notes", label: "Description", type: "textarea", value: row.notes },
     ],
-    onSaved: refreshAll,
+    onSaved: async (saved) => {
+      if (saved.date_commande) {
+        const existing = cache.todos.find(t => t.commande_id === saved.id && t.titre === "Passer commande");
+        if (existing) {
+          if (existing.date_echeance !== saved.date_commande) await updateRow("todos", existing.id, { date_echeance: saved.date_commande });
+        } else {
+          await insertRow("todos", { titre: "Passer commande", description: saved.article ? "Article : " + saved.article : null, commande_id: saved.id, date_echeance: saved.date_commande, statut: "À faire", priorite: "Normale" });
+        }
+      }
+      await refreshAll();
+    },
   });
 }
 

@@ -444,14 +444,14 @@
           <div class="page-title">Commande</div>
           <div class="page-toolbar">
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-              <input class="filter" id="commande-search" placeholder="Rechercher un article…">
+              <input class="filter" id="commande-search" placeholder="Rechercher une commande…">
               <select class="filter" id="commande-filter-statut"><option value="">Tous les statuts</option></select>
             </div>
-            <button class="btn" id="btn-new-commande">＋ Nouvel article</button>
+            <button class="btn" id="btn-new-commande">＋ Nouvelle commande</button>
           </div>
-          <div class="page-note">Chaque article saisi est mémorisé : il te sera proposé automatiquement lors des prochaines commandes.</div>
+          <div class="page-note">Chaque article saisi est mémorisé : il te sera proposé automatiquement lors des prochaines commandes. Le lien à un évènement est facultatif.</div>
           <table class="data">
-            <thead><tr><th>Article</th><th>Qté</th><th>Fournisseur</th><th>Catégorie</th><th>Statut</th><th>Notes</th><th></th></tr></thead>
+            <thead><tr><th>Article</th><th>Qté</th><th>Fournisseur</th><th>Évènement lié</th><th>Date évènement</th><th>Date commande</th><th>Statut</th><th>Description</th><th></th></tr></thead>
             <tbody id="commande-tbody"></tbody>
           </table>
           <datalist id="commande-articles"></datalist>
