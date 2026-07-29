@@ -204,13 +204,12 @@
     <div class="sidebar" id="sidebar">
       <div class="logo">🎪 Gestion<br>Réception</div>
       <div class="nav-item" data-page="dashboard">🏠  Dashboard</div>
-      <div class="nav-item" data-page="todo">✅  To Do List</div>
+      <div class="nav-item" data-page="todo">✅  To Do List / RDV</div>
       <div class="nav-item" data-page="prospects">🎯  Suivi Clients</div>
+      <div class="nav-item" data-page="evenements">🎉  Évènements</div>
       <div class="nav-item" data-page="contacts">👤  Contacts</div>
       <div class="nav-item" data-page="devis">📄  Devis</div>
       <div class="nav-item" data-page="factures">🧾  Facturation</div>
-      <div class="nav-item" data-page="evenements">🎉  Évènements</div>
-      <div class="nav-item" data-page="rdv">🤝  RDV</div>
       <div class="nav-item" data-page="calendrier">📅  Calendrier</div>
       <div class="nav-item" data-page="tarification">💶  Tarification</div>
       <div class="nav-item" data-page="commande">📦  Commande</div>
@@ -251,7 +250,7 @@
 
         <!-- TODO -->
         <div class="page" id="page-todo">
-          <div class="page-title">To Do List</div>
+          <div class="page-title">To Do List / RDV</div>
           <div class="page-toolbar">
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
               <select class="filter" id="todo-filter-statut"><option value="">Tous les statuts</option></select>
@@ -265,6 +264,36 @@
             <thead><tr><th>Titre</th><th>Lié à</th><th>Priorité</th><th>Échéance</th><th>Statut</th><th></th></tr></thead>
             <tbody id="todo-tbody"></tbody>
           </table>
+
+          <div class="panel" style="margin-top:26px;">
+            <div class="page-toolbar" style="margin-bottom:10px;">
+              <h3 style="margin:0;">🤝 Rendez-vous</h3>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                <select class="filter" id="rdv-filter-statut"><option value="">Tous les statuts</option></select>
+                <button class="btn" id="btn-new-rdv">＋ Nouveau RDV</button>
+              </div>
+            </div>
+            <table class="data">
+              <thead><tr><th>Date</th><th>Heure</th><th>Objet</th><th>Contact</th><th>Statut</th><th>Notes</th><th></th></tr></thead>
+              <tbody id="rdv-tbody"></tbody>
+            </table>
+          </div>
+
+          <div class="panel" style="margin-top:20px;">
+            <h3>🕓 Rendez-vous passés</h3>
+            <table class="data">
+              <thead><tr><th>Date</th><th>Heure</th><th>Objet</th><th>Contact</th><th>Statut</th><th>Notes</th><th></th></tr></thead>
+              <tbody id="rdv-past-tbody"></tbody>
+            </table>
+          </div>
+
+          <div class="panel" style="margin-top:20px;">
+            <h3>✅ Tâches terminées</h3>
+            <table class="data">
+              <thead><tr><th>Titre</th><th>Lié à</th><th>Priorité</th><th>Échéance</th><th></th></tr></thead>
+              <tbody id="todo-done-tbody"></tbody>
+            </table>
+          </div>
         </div>
 
         <!-- SUIVI CLIENTS -->
@@ -345,19 +374,6 @@
           <table class="data">
             <thead><tr><th>Date</th><th>Contact</th><th>Provenance</th><th>Type</th><th>Prestation</th><th>Invités</th><th>Statut</th><th>Devis</th><th>Facture</th><th>Dernière action</th><th></th></tr></thead>
             <tbody id="evenement-tbody"></tbody>
-          </table>
-        </div>
-
-        <!-- RDV -->
-        <div class="page" id="page-rdv">
-          <div class="page-title">Rendez-vous</div>
-          <div class="page-toolbar">
-            <select class="filter" id="rdv-filter-statut"><option value="">Tous les statuts</option></select>
-            <button class="btn" id="btn-new-rdv">＋ Nouveau RDV</button>
-          </div>
-          <table class="data">
-            <thead><tr><th>Date</th><th>Heure</th><th>Objet</th><th>Contact</th><th>Statut</th><th></th></tr></thead>
-            <tbody id="rdv-tbody"></tbody>
           </table>
         </div>
 

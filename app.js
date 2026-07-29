@@ -229,13 +229,12 @@ function closeMobileMenu() {
 }
 function renderPage(key) {
   if (key === "dashboard") renderDashboard();
-  else if (key === "todo") renderTodo();
+  else if (key === "todo") { renderTodo(); renderRdv(); }
   else if (key === "prospects") renderSuivi();
   else if (key === "contacts") renderContacts();
   else if (key === "devis") renderDevis();
   else if (key === "factures") renderFactures();
   else if (key === "evenements") renderEvenements();
-  else if (key === "rdv") renderRdv();
   else if (key === "calendrier") renderCalendrier();
   else if (key === "tarification") renderGrille();
   else if (key === "commande") renderCommande();
@@ -257,6 +256,7 @@ function effectivePriorite(t) {
 function todoLieALabel(t) {
   if (t.evenement_id) { const e = findEvenement(t.evenement_id); return e ? "🎉 " + (eventLabel(e)) : "—"; }
   if (t.contact_id) { const c = findContact(t.contact_id); return c ? "👤 " + contactLabel(c) : "—"; }
+  if (t.commande_id) { const c = findCommande(t.commande_id); return c ? "📦 " + (c.article || ("Commande #" + c.id)) : "—"; }
   return t.categorie || "—";
 }
 function eventLabel(e) {
@@ -278,7 +278,7 @@ function renderDashboard() {
     ["🎯", prospectsActifs, "Prospects actifs", () => goToFilter("contacts", "contact-filter-categorie", "Prospect")],
     ["📄", devisEnAttente, "Devis en attente", () => goToFilter("devis", "devis-filter-statut", "En attente")],
     ["🧾", facturesImpayees, "Factures impayées", () => goToFilter("factures", "facture-filter-statut", "Envoyée")],
-    ["🤝", rdvAvenir, "RDV à venir", () => showPage("rdv")],
+    ["🤝", rdvAvenir, "RDV à venir", () => showPage("todo")],
     ["🎉", evenementsAvenir, "Évènements à venir", () => showPage("evenements")],
     ["✅", todosOuvertes, "Tâches en cours", () => showPage("todo")],
   ];
@@ -357,6 +357,10 @@ function evenementOptionsHtml(selectedId) {
 function factureOptionsHtml(selectedId) {
   return cache.factures.map(f => `<option value="${f.id}" ${f.id === selectedId ? "selected" : ""}>${f.numero || ("Facture #" + f.id)}</option>`).join("");
 }
+function findCommande(id) { return cache.commandes.find(c => c.id === id); }
+function commandeOptionsHtml(selectedId) {
+  return cache.commandes.map(c => `<option value="${c.id}" ${c.id === selectedId ? "selected" : ""}>${c.article || ("Commande #" + c.id)}</option>`).join("");
+}
 
 function renderTodo() {
   ensureFilterOptions("todo-filter-statut", STATUTS_TODO);
@@ -393,6 +397,19 @@ function renderTodo() {
         <button onclick="confirmDelete('todos', ${t.id}, renderTodo)">🗑</button>
       </td></tr>`;
   }).join("") : `<tr class="empty-row"><td colspan="6">Aucune tâche</td></tr>`;
+
+  const done = [...cache.todos].filter(t => t.statut === "Terminé")
+    .sort((a, b) => (b.date_echeance || "").localeCompare(a.date_echeance || ""));
+  const doneTbody = document.getElementById("todo-done-tbody");
+  doneTbody.innerHTML = done.length ? done.map(t => `<tr>
+      <td>${t.titre}</td>
+      <td>${todoLieALabel(t)}</td>
+      <td>${badge(effectivePriorite(t), STATUT_COLORS[effectivePriorite(t)])}</td>
+      <td>${fmtDateFR(t.date_echeance) || "—"}</td>
+      <td class="row-actions">
+        <button onclick="openTodoDialog(${t.id})">✎</button>
+        <button onclick="confirmDelete('todos', ${t.id}, renderTodo)">🗑</button>
+      </td></tr>`).join("") : `<tr class="empty-row"><td colspan="5">Aucune tâche terminée</td></tr>`;
 }
 
 function openTodoDialog(id) {
@@ -405,6 +422,7 @@ function openTodoDialog(id) {
       { key: "description", label: "Description", type: "textarea", value: row.description },
       { key: "evenement_id", label: "Lié à un évènement", type: "select-raw", optionsHtml: `<option value="">— Aucun —</option>` + evenementOptionsHtml(row.evenement_id), value: row.evenement_id, numeric: true },
       { key: "contact_id", label: "Ou lié à un contact", type: "select-raw", optionsHtml: `<option value="">— Aucun —</option>` + contactOptionsHtml(row.contact_id), value: row.contact_id, numeric: true },
+      { key: "commande_id", label: "Ou lié à une commande", type: "select-raw", optionsHtml: `<option value="">— Aucun —</option>` + commandeOptionsHtml(row.commande_id), value: row.commande_id, numeric: true },
       { key: "priorite", label: "Priorité", type: "select", options: PRIORITES, value: row.priorite || "Normale" },
       { key: "statut", label: "Statut", type: "select", options: STATUTS_TODO, value: row.statut || "À faire" },
       { key: "date_echeance", label: "Échéance", type: "date", value: row.date_echeance },
@@ -1064,22 +1082,32 @@ function openEvenementDialog(id, defaultDate) {
 function renderRdv() {
   ensureFilterOptions("rdv-filter-statut", STATUTS_RDV);
   const filter = document.getElementById("rdv-filter-statut").value;
-  let rows = [...cache.rdv].sort((a, b) => ((a.date_rdv || "9999") + (a.heure || "")).localeCompare((b.date_rdv || "9999") + (b.heure || "")));
+  const today = todayStr();
+  let rows = [...cache.rdv];
   if (filter) rows = rows.filter(r => r.statut === filter);
-  const tbody = document.getElementById("rdv-tbody");
-  tbody.innerHTML = rows.length ? rows.map(r => `
+
+  const rowHtml = r => `
     <tr>
       <td>${fmtDateFR(r.date_rdv)}</td><td>${r.heure || "—"}</td><td>${r.objet || "—"}</td>
       <td>${contactLabel(findContact(r.contact_id))}</td><td>${badge(r.statut, STATUT_COLORS[r.statut])}</td>
+      <td>${r.notes || "—"}</td>
       <td class="row-actions"><button onclick="openRdvDialog(${r.id})">✎</button><button onclick="confirmDelete('rdv', ${r.id}, renderRdv)">🗑</button></td>
-    </tr>`).join("") : `<tr class="empty-row"><td colspan="6">Aucun rendez-vous</td></tr>`;
+    </tr>`;
+
+  const upcoming = rows.filter(r => !r.date_rdv || r.date_rdv >= today)
+    .sort((a, b) => ((a.date_rdv || "9999") + (a.heure || "")).localeCompare((b.date_rdv || "9999") + (b.heure || "")));
+  const past = rows.filter(r => r.date_rdv && r.date_rdv < today)
+    .sort((a, b) => ((b.date_rdv || "") + (b.heure || "")).localeCompare((a.date_rdv || "") + (a.heure || "")));
+
+  document.getElementById("rdv-tbody").innerHTML = upcoming.length ? upcoming.map(rowHtml).join("") : `<tr class="empty-row"><td colspan="7">Aucun rendez-vous à venir</td></tr>`;
+  document.getElementById("rdv-past-tbody").innerHTML = past.length ? past.map(rowHtml).join("") : `<tr class="empty-row"><td colspan="7">Aucun rendez-vous passé</td></tr>`;
 }
 function openRdvDialog(id) {
   const row = id ? cache.rdv.find(r => r.id === id) : {};
   openModal({
     title: id ? "Modifier le RDV" : "Nouveau RDV", table: "rdv", id,
     fields: [
-      { key: "objet", label: "Objet", type: "text", required: true, value: row.objet },
+      { key: "objet", label: "Objet", type: "text", value: row.objet },
       { key: "contact_id", label: "Contact", type: "select-raw", optionsHtml: `<option value="">—</option>` + contactOptionsHtml(row.contact_id), value: row.contact_id, numeric: true },
       { key: "date_rdv", label: "Date", type: "date", value: row.date_rdv },
       { key: "heure", label: "Heure", type: "time", value: row.heure },
