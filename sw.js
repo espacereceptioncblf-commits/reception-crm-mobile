@@ -1,5 +1,5 @@
-const CACHE_NAME = "reception-crm-v7";
-const ASSETS = ["./", "./index.html", "./app.js", "./manifest.json"];
+const CACHE_NAME = "reception-crm-v8";
+const ASSETS = ["./", "./index.html", "./app.js", "./manifest.json", "./logo.png"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)));
