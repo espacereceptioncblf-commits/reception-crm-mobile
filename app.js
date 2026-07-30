@@ -684,6 +684,12 @@ function renderSuiviKanban(rows) {
   });
 }
 
+function openEventNotesFromRecap(eventId) {
+  const e = findEvenement(eventId);
+  if (!e) return;
+  const c = findContact(e.contact_id);
+  openNotesPanel("Notes — " + (contactLabel(c) || "évènement"), "evenements", eventId, e.notes || "", () => openEventRecap(eventId));
+}
 function openEventRecap(id) {
   const e = findEvenement(id);
   if (!e) return;
@@ -725,7 +731,7 @@ function openEventRecap(id) {
     <table class="data" style="margin-bottom:16px;"><tbody>${historique.length ? historique.map(h => `<tr><td style="white-space:nowrap;color:var(--muted);width:110px;">${fmtDateFR(h.date)}</td><td>${h.texte}</td></tr>`).join("") : `<tr class="empty-row"><td colspan="2">Aucune entrée</td></tr>`}</tbody></table>
     <div style="display:flex;justify-content:space-between;align-items:center;margin:0 0 8px;">
       <h3 style="font-size:14px;margin:0;">${icon("edit",14)} Notes</h3>
-      <button class="btn secondary" type="button" onclick="openNotesPanel('Notes — ' + '${(contactLabel(c) || 'évènement').replace(/'/g, "\\'")}', 'evenements', ${e.id}, ${JSON.stringify(e.notes || "")}, () => openEventRecap(${e.id}))">${icon("edit",13)} Ouvrir en grand</button>
+      <button class="btn secondary" type="button" onclick="openEventNotesFromRecap(${e.id})">${icon("edit",13)} Ouvrir en grand</button>
     </div>
     <div style="font-size:14px;line-height:1.5;white-space:pre-wrap;background:#FAFAF8;border:1px solid var(--border);border-radius:8px;padding:12px;min-height:50px;">${e.notes || "—"}</div>
     <h3 style="font-size:14px;margin:16px 0 8px;">${icon("check-square",14)} Tâches liées</h3>
@@ -735,7 +741,7 @@ function openEventRecap(id) {
   if (oldBtn) oldBtn.remove();
   const printBtn = document.createElement("button");
   printBtn.id = "modal-print-btn";
-  printBtn.className = "btn secondary"; printBtn.type = "button"; printBtn.textContent = icon("printer",14) + " Imprimer";
+  printBtn.className = "btn secondary"; printBtn.type = "button"; printBtn.innerHTML = icon("printer", 14) + " Imprimer";
   printBtn.onclick = () => printEventRecap(e.id);
   document.getElementById("modal-cancel").insertAdjacentElement("beforebegin", printBtn);
 }
