@@ -251,6 +251,102 @@ function renderGlobalSearchResults(qRaw) {
     </div>`).join("")}`).join("");
 }
 
+// ---- Centre de notifications ----
+function computeAlerts() {
+  const alerts = [];
+  const today = todayStr();
+  const in3days = addDaysISO(today, 3);
+  const in2days = addDaysISO(today, 2);
+
+  cache.devis.forEach(d => {
+    if (d.statut === "Expiré") {
+      alerts.push({ id: `devis-exp-${d.id}`, level: "danger", ic: "file-text", msg: `Devis ${d.numero || d.id} expiré`, onclick: `showPage('devis');openDevisEditor(${d.id})` });
+    } else if ((d.statut === "Envoyé" || d.statut === "En attente") && d.date_validite && d.date_validite >= today && d.date_validite <= in3days) {
+      alerts.push({ id: `devis-soon-${d.id}`, level: "warning", ic: "file-text", msg: `Devis ${d.numero || d.id} expire le ${fmtDateFR(d.date_validite)}`, onclick: `showPage('devis');openDevisEditor(${d.id})` });
+    }
+  });
+
+  cache.factures.forEach(f => {
+    if (!["Payée", "Annulée"].includes(f.statut) && f.date_echeance && f.date_echeance < today) {
+      alerts.push({ id: `facture-late-${f.id}`, level: "danger", ic: "receipt", msg: `Facture ${f.numero || f.id} en retard de paiement`, onclick: `showPage('factures');openFactureDialog(${f.id})` });
+    }
+  });
+
+  cache.todos.forEach(t => {
+    if (t.statut === "Terminé" || !t.date_echeance) return;
+    if (t.date_echeance < today) alerts.push({ id: `todo-late-${t.id}`, level: "danger", ic: "check-square", msg: `Tâche en retard : ${t.titre}`, onclick: `showPage('todo')` });
+    else if (t.date_echeance <= in3days) alerts.push({ id: `todo-soon-${t.id}`, level: "warning", ic: "check-square", msg: `Tâche bientôt due : ${t.titre} (${fmtDateFR(t.date_echeance)})`, onclick: `showPage('todo')` });
+  });
+
+  cache.rdv.forEach(r => {
+    if (r.statut === "Annulé" || !r.date_rdv) return;
+    if (r.date_rdv >= today && r.date_rdv <= in2days) alerts.push({ id: `rdv-soon-${r.id}`, level: "info", ic: "users", msg: `RDV proche : ${r.objet || "RDV"} le ${fmtDateFR(r.date_rdv)}`, onclick: `showPage('todo')` });
+  });
+
+  cache.commandes.forEach(c => {
+    if (["Commandé", "Reçu"].includes(c.statut) || !c.date_commande) return;
+    if (c.date_commande >= today && c.date_commande <= in3days) alerts.push({ id: `commande-soon-${c.id}`, level: "warning", ic: "package", msg: `Commande à passer bientôt : ${c.article || "article"}`, onclick: `showPage('commande')` });
+    else if (c.date_commande < today) alerts.push({ id: `commande-late-${c.id}`, level: "danger", ic: "package", msg: `Commande en retard : ${c.article || "article"}`, onclick: `showPage('commande')` });
+  });
+
+  const order = { danger: 0, warning: 1, info: 2 };
+  return alerts.sort((a, b) => order[a.level] - order[b.level]);
+}
+
+function renderNotifPanel() {
+  const alerts = computeAlerts();
+  const countEl = document.getElementById("notif-bell-count");
+  if (alerts.length) { countEl.textContent = alerts.length > 9 ? "9+" : alerts.length; countEl.style.display = "flex"; }
+  else countEl.style.display = "none";
+
+  const enableBtn = document.getElementById("notif-enable-btn");
+  if ("Notification" in window) {
+    if (Notification.permission === "granted") { enableBtn.textContent = "Alertes navigateur activées"; enableBtn.disabled = true; }
+    else if (Notification.permission === "denied") { enableBtn.textContent = "Alertes bloquées par le navigateur"; enableBtn.disabled = true; }
+    else { enableBtn.textContent = "Activer les alertes navigateur"; enableBtn.disabled = false; }
+  } else { enableBtn.style.display = "none"; }
+
+  const levelColor = { danger: "var(--danger)", warning: "var(--warning)", info: "var(--info)" };
+  document.getElementById("notif-list").innerHTML = alerts.length ? alerts.map(a => `
+    <div class="notif-item" onclick="closeNotifPanel();${a.onclick}">
+      <span class="ni-icon" style="color:${levelColor[a.level]};">${icon(a.ic, 16)}</span>
+      <span>${a.msg}</span>
+    </div>`).join("") : `<div class="notif-empty">Aucune alerte pour le moment — tout est à jour.</div>`;
+
+  maybeSendBrowserNotifications(alerts);
+  return alerts;
+}
+function toggleNotifPanel() {
+  const panel = document.getElementById("notif-panel");
+  if (panel.classList.contains("open")) { closeNotifPanel(); return; }
+  renderNotifPanel();
+  panel.classList.add("open");
+}
+function closeNotifPanel() { document.getElementById("notif-panel").classList.remove("open"); }
+
+function getNotifiedIds() {
+  try { return new Set(JSON.parse(localStorage.getItem("crm-notified-ids") || "[]")); } catch (e) { return new Set(); }
+}
+function saveNotifiedIds(set) {
+  try { localStorage.setItem("crm-notified-ids", JSON.stringify([...set])); } catch (e) {}
+}
+function maybeSendBrowserNotifications(alerts) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const notified = getNotifiedIds();
+  const fresh = alerts.filter(a => !notified.has(a.id));
+  fresh.slice(0, 5).forEach(a => {
+    try { new Notification("CRM CBLF", { body: a.msg, icon: "logo.png" }); } catch (e) {}
+    notified.add(a.id);
+  });
+  if (fresh.length) saveNotifiedIds(notified);
+}
+async function enableBrowserNotifications() {
+  if (!("Notification" in window)) { showToast("Ton navigateur ne supporte pas les notifications."); return; }
+  const perm = await Notification.requestPermission();
+  if (perm === "granted") { showToast("Alertes navigateur activées !"); renderNotifPanel(); }
+  else showToast("Autorisation refusée — active-la dans les réglages du navigateur si tu changes d'avis.");
+}
+
 function emptyState(colspan, message, ctaLabel, ctaOnclick) {
   return `<tr class="empty-row"><td colspan="${colspan}">
     <div class="empty-state">
@@ -365,6 +461,9 @@ async function onLoggedIn(user) {
   await autoExpireDevis();
   showPage("dashboard");
   document.getElementById("app-loading").classList.remove("open");
+  renderNotifPanel();
+  clearInterval(window._notifInterval);
+  window._notifInterval = setInterval(async () => { await refreshCache(); renderNotifPanel(); }, 5 * 60 * 1000);
 }
 async function handleLogout() {
   await sb.auth.signOut();
@@ -2193,6 +2292,10 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("menu-toggle-btn").addEventListener("click", openMobileMenu);
   document.getElementById("sidebar-overlay").addEventListener("click", closeMobileMenu);
   document.getElementById("global-search-btn").addEventListener("click", openGlobalSearch);
+  document.getElementById("notif-bell-btn").addEventListener("click", (e) => { e.stopPropagation(); toggleNotifPanel(); });
+  document.getElementById("notif-enable-btn").addEventListener("click", (e) => { e.stopPropagation(); enableBrowserNotifications(); });
+  document.getElementById("notif-panel").addEventListener("click", (e) => e.stopPropagation());
+  document.addEventListener("click", (e) => { if (!e.target.closest("#notif-panel") && !e.target.closest("#notif-bell-btn")) closeNotifPanel(); });
   document.getElementById("gsearch-close").addEventListener("click", closeGlobalSearch);
   document.getElementById("gsearch-overlay").addEventListener("click", (e) => { if (e.target.id === "gsearch-overlay") closeGlobalSearch(); });
   document.getElementById("gsearch-input").addEventListener("input", (e) => renderGlobalSearchResults(e.target.value));
