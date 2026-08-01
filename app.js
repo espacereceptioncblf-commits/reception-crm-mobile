@@ -884,6 +884,7 @@ function printEventRecap(id) {
 // ========================================================================
 //  CONTACTS
 // ========================================================================
+let contactView = "table";
 function renderContacts() {
   ensureFilterOptions("contact-filter-categorie", CATEGORIES_CONTACT);
   bindSearch("contact-search", renderContacts);
@@ -892,6 +893,11 @@ function renderContacts() {
   let rows = [...cache.contacts];
   if (fCat) rows = rows.filter(c => c.categorie === fCat);
   if (search) rows = rows.filter(c => (contactLabel(c) + " " + (c.societe || "") + " " + (c.email || "")).toLowerCase().includes(search));
+
+  document.getElementById("contact-view-select").value = contactView;
+  document.getElementById("contact-table-view").style.display = contactView === "table" ? "block" : "none";
+  document.getElementById("contact-kanban").style.display = contactView === "kanban" ? "flex" : "none";
+  if (contactView === "kanban") { renderContactsKanban(rows); return; }
 
   const tbody = document.getElementById("contact-tbody");
   tbody.innerHTML = rows.length ? rows.map(c => `
@@ -909,6 +915,41 @@ function renderContacts() {
         <button title="Fiche contact" onclick="openContactFiche(${c.id})">${icon("more-horizontal",14)}</button>
       </td>
     </tr>`).join("") : emptyState(7, "Aucun contact pour l'instant", "Ajouter ton premier contact", "openContactDialog(null)");
+}
+
+function renderContactsKanban(rows) {
+  const board = document.getElementById("contact-kanban");
+  board.innerHTML = CATEGORIES_CONTACT.map(cat => {
+    const items = rows.filter(c => c.categorie === cat);
+    const cards = items.map(c => `
+      <div class="kanban-card" draggable="true" data-id="${c.id}" onclick="openContactFiche(${c.id})">
+        <div class="kc-name">${contactLabel(c)}</div>
+        <div class="kc-date">${c.societe || c.email || c.telephone || "—"}</div>
+        ${c.provenance ? `<div class="kc-badges"><span class="badge" style="background:color-mix(in srgb, var(--muted) 16%, var(--card));color:var(--muted);">${c.provenance}</span></div>` : ""}
+      </div>`).join("");
+    return `<div class="kanban-col" data-cat="${cat}">
+      <h4>${cat} <span>${items.length}</span></h4>
+      ${cards}
+    </div>`;
+  }).join("");
+
+  board.querySelectorAll(".kanban-card").forEach(card => {
+    card.addEventListener("dragstart", (e) => { e.stopPropagation(); e.dataTransfer.setData("text/plain", card.dataset.id); e.dataTransfer.effectAllowed = "move"; });
+  });
+  board.querySelectorAll(".kanban-col").forEach(col => {
+    col.addEventListener("dragover", (e) => { e.preventDefault(); col.classList.add("drag-over"); });
+    col.addEventListener("dragleave", () => col.classList.remove("drag-over"));
+    col.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      col.classList.remove("drag-over");
+      const id = Number(e.dataTransfer.getData("text/plain"));
+      const newCat = col.dataset.cat;
+      const c = cache.contacts.find(x => x.id === id);
+      if (!c || c.categorie === newCat) return;
+      const saved = await updateRow("contacts", id, { categorie: newCat });
+      if (saved) { showToast("Catégorie mise à jour : " + newCat); await refreshCache(); renderContacts(); }
+    });
+  });
 }
 
 function openContactFiche(id) {
@@ -2342,6 +2383,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-new-facture").addEventListener("click", () => openFactureDialog(null));
   document.getElementById("btn-export-factures-csv").addEventListener("click", exportFacturesCSV);
   document.getElementById("btn-new-contact").addEventListener("click", () => openContactDialog(null));
+  document.getElementById("contact-view-select").addEventListener("change", (e) => { contactView = e.target.value; renderContacts(); });
   document.getElementById("btn-new-evenement").addEventListener("click", () => openEvenementDialog(null));
   document.getElementById("btn-new-rdv").addEventListener("click", () => openRdvDialog(null));
   document.getElementById("btn-new-grille").addEventListener("click", () => openGrilleDialog(null));
