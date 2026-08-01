@@ -920,15 +920,16 @@ function renderContacts() {
 function renderContactsKanban(rows) {
   const board = document.getElementById("contact-kanban");
   board.innerHTML = CATEGORIES_CONTACT.map(cat => {
+    const color = STATUT_COLORS[cat] || "var(--muted)";
     const items = rows.filter(c => c.categorie === cat);
     const cards = items.map(c => `
-      <div class="kanban-card" draggable="true" data-id="${c.id}" onclick="openContactFiche(${c.id})">
+      <div class="kanban-card" draggable="true" data-id="${c.id}" onclick="openContactFiche(${c.id})" style="border-left:3px solid ${color};">
         <div class="kc-name">${contactLabel(c)}</div>
         <div class="kc-date">${c.societe || c.email || c.telephone || "—"}</div>
         ${c.provenance ? `<div class="kc-badges"><span class="badge" style="background:color-mix(in srgb, var(--muted) 16%, var(--card));color:var(--muted);">${c.provenance}</span></div>` : ""}
       </div>`).join("");
-    return `<div class="kanban-col" data-cat="${cat}">
-      <h4>${cat} <span>${items.length}</span></h4>
+    return `<div class="kanban-col" data-cat="${cat}" style="border-top:3px solid ${color};">
+      <h4><span style="display:inline-flex;align-items:center;gap:6px;"><i style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;"></i>${cat}</span> <span>${items.length}</span></h4>
       ${cards}
     </div>`;
   }).join("");
