@@ -106,12 +106,15 @@ const TVA_RATES = [0, 5.5, 8, 10, 20];
 const SAISONS = ["Toute l'année", "Haute saison", "Basse saison"];
 const TYPES_PRESTATAIRE = ["Traiteur", "Décorateur", "Animateur", "Fleuriste", "DJ", "Chanteur/Musicien", "Photographe", "Hébergement", "Organisateur"];
 const TVA_DEVIS = [10, 20];
-const CGV_OPTIONS = [
+const CGV_OPTIONS_DEFAUT = [
   "Paiement du solde à la date de l'événement.",
   "30% d'acompte à la réservation.",
   "30% : 1 mois avant la date de l'événement.",
   "Paiement du solde à réception de la facture qui sera envoyée 7 jours avant la date de l'événement.",
 ];
+function getCgvTexts() {
+  return cache.cgv_options.length ? cache.cgv_options.map(c => c.texte) : CGV_OPTIONS_DEFAUT;
+}
 
 const EMETTEUR = {
   nom: "SAS CLF",
@@ -140,7 +143,7 @@ const STATUT_COLORS = {
 
 // ---- 3) ETAT LOCAL ----
 let currentUser = null;
-let cache = { contacts: [], prospects: [], devis: [], evenements: [], todos: [], grille_tarifaire: [], rdv: [], factures: [], commandes: [], prestataires: [], notes: [], note_categories: [] };
+let cache = { contacts: [], prospects: [], devis: [], evenements: [], todos: [], grille_tarifaire: [], rdv: [], factures: [], commandes: [], prestataires: [], notes: [], note_categories: [], cgv_options: [], types_facture: [] };
 let currentPage = "dashboard";
 let modalContext = null;
 let calState = { year: new Date().getFullYear(), month: new Date().getMonth() + 1, selected: null, view: "month" };
@@ -347,6 +350,17 @@ async function enableBrowserNotifications() {
   else showToast("Autorisation refusée — active-la dans les réglages du navigateur si tu changes d'avis.");
 }
 
+function inlineStatusSelect(table, id, field, options, current, renderFnName) {
+  const color = STATUT_COLORS[current] || "var(--muted)";
+  return `<select onclick="event.stopPropagation()" onchange="event.stopPropagation();updateInlineStatus('${table}',${id},'${field}',this.value,'${renderFnName}')" style="background:color-mix(in srgb, ${color} 16%, var(--card));color:${color};border:1px solid color-mix(in srgb, ${color} 35%, transparent);border-radius:999px;padding:3px 20px 3px 8px;font-size:11px;font-weight:bold;">
+    ${options.map(o => `<option value="${o.replace(/"/g, "&quot;")}" ${o === current ? "selected" : ""}>${o}</option>`).join("")}
+  </select>`;
+}
+async function updateInlineStatus(table, id, field, value, renderFnName) {
+  const saved = await updateRow(table, id, { [field]: value });
+  if (saved) { showToast("Mis à jour : " + value); await refreshCache(); if (window[renderFnName]) window[renderFnName](); }
+}
+
 function emptyState(colspan, message, ctaLabel, ctaOnclick) {
   return `<tr class="empty-row"><td colspan="${colspan}">
     <div class="empty-state">
@@ -405,7 +419,7 @@ async function deleteRow(table, id) {
   return true;
 }
 async function refreshCache() {
-  const [contacts, prospects, devisRows, evenements, todos, grille, rdv, factures, commandes, prestataires, notes, noteCategories] = await Promise.all([
+  const [contacts, prospects, devisRows, evenements, todos, grille, rdv, factures, commandes, prestataires, notes, noteCategories, cgvOptions, typesFacture] = await Promise.all([
     fetchAll("contacts", "nom", true),
     fetchAll("prospects"),
     fetchAll("devis"),
@@ -418,8 +432,10 @@ async function refreshCache() {
     fetchAll("prestataires"),
     fetchAll("notes"),
     fetchAll("note_categories", "nom", true),
+    fetchAll("cgv_options", "ordre", true),
+    fetchAll("types_facture", "designation", true),
   ]);
-  cache = { contacts, prospects, devis: devisRows, evenements, todos, grille_tarifaire: grille, rdv, factures, commandes, prestataires, notes, note_categories: noteCategories };
+  cache = { contacts, prospects, devis: devisRows, evenements, todos, grille_tarifaire: grille, rdv, factures, commandes, prestataires, notes, note_categories: noteCategories, cgv_options: cgvOptions, types_facture: typesFacture };
 }
 
 // ========================================================================
@@ -623,8 +639,9 @@ function bindSearch(id, fn) {
 // ========================================================================
 //  TODO
 // ========================================================================
-function contactOptionsHtml(selectedId) {
-  return cache.contacts.map(c => `<option value="${c.id}" ${c.id === selectedId ? "selected" : ""}>${contactLabel(c)}</option>`).join("");
+function contactOptionsHtml(selectedId, categories) {
+  const list = categories ? cache.contacts.filter(c => categories.includes(c.categorie)) : cache.contacts;
+  return list.map(c => `<option value="${c.id}" ${c.id === selectedId ? "selected" : ""}>${contactLabel(c)}</option>`).join("");
 }
 function devisOptionsHtml(selectedId) {
   return cache.devis.map(d => `<option value="${d.id}" ${d.id === selectedId ? "selected" : ""}>${d.numero || ("Devis #" + d.id)}</option>`).join("");
@@ -651,6 +668,7 @@ function renderTodo() {
 
   let rows = [...cache.todos];
   if (fStatut) rows = rows.filter(t => t.statut === fStatut);
+  else rows = rows.filter(t => t.statut !== "Terminé");
   if (fPrio) rows = rows.filter(t => effectivePriorite(t) === fPrio);
   const prioRank = { "Urgente": 0, "Haute": 1, "Normale": 2, "Basse": 3 };
   const statutRank = { "À faire": 0, "En cours": 1, "Terminé": 2 };
@@ -667,9 +685,9 @@ function renderTodo() {
     return `<tr>
       <td>${t.titre}</td>
       <td>${todoLieALabel(t)}</td>
-      <td>${badge(p, STATUT_COLORS[p])}</td>
+      <td>${inlineStatusSelect("todos", t.id, "priorite", PRIORITES, t.priorite || p, "renderTodo")}</td>
       <td class="${echClass}">${fmtDateFR(t.date_echeance) || "—"}</td>
-      <td>${badge(t.statut, STATUT_COLORS[t.statut])}</td>
+      <td>${inlineStatusSelect("todos", t.id, "statut", STATUTS_TODO, t.statut, "renderTodo")}</td>
       <td class="row-actions">
         <button onclick="openTodoDialog(${t.id})">${icon("edit",14)}</button>
         <button onclick="confirmDelete('todos', ${t.id}, renderTodo)">${icon("trash",14)}</button>
@@ -728,18 +746,25 @@ function renderSuivi() {
   const tbody = document.getElementById("prospect-tbody");
   tbody.innerHTML = rows.length ? rows.map(e => {
     const dev = cache.devis.find(d => d.evenement_id === e.id);
-    const fac = cache.factures.find(f => (e.facture_id && f.id === e.facture_id) || (dev && f.devis_id === dev.id));
+    const facs = cache.factures.filter(f => (e.facture_id && f.id === e.facture_id) || (dev && f.devis_id === dev.id));
+    const fac = facs[0];
     const tache = cache.todos.find(t => t.evenement_id === e.id && t.statut !== "Terminé");
+    const today = todayStr();
+    const nextRdv = cache.rdv.filter(r => r.contact_id === e.contact_id && r.date_rdv && r.date_rdv >= today).sort((a, b) => a.date_rdv.localeCompare(b.date_rdv))[0];
     const dateTxt = e.date_flexible ? (fmtMoisFR(e.mois_seul) + " (flex.)") : fmtDateFR(e.date_evenement);
+    const totalFacture = facs.reduce((s, f) => s + (Number(f.montant_ttc) || 0), 0);
+    const totalPaye = facs.filter(f => f.statut === "Payée").reduce((s, f) => s + (Number(f.montant_ttc) || 0), 0);
+    const paiementTxt = totalFacture ? `${totalPaye} € / ${totalFacture} €` : "—";
+    const paiementColor = totalFacture && totalPaye >= totalFacture ? "var(--success)" : (totalPaye > 0 ? "var(--warning)" : "var(--muted)");
     return `<tr>
       <td>${contactLabel(findContact(e.contact_id))}</td>
       <td>${dateTxt || "—"}</td>
-      <td>${e.derniere_action || "—"}</td>
-      <td>${tache ? tache.titre : "—"}</td>
+      <td>${tache ? "✓ " + tache.titre : "—"}${nextRdv ? `<br><span style="color:var(--muted);font-size:11px;">RDV : ${fmtDateFR(nextRdv.date_rdv)}</span>` : ""}</td>
       <td class="row-actions"><button title="Fiche récap" onclick="openEventRecap(${e.id})">${icon("clipboard",14)}</button></td>
-      <td>${badge(e.statut, STATUT_COLORS[e.statut])}</td>
+      <td>${inlineStatusSelect("evenements", e.id, "statut", STATUTS_EVENEMENT, e.statut, "renderSuivi")}</td>
       <td>${dev ? badge(dev.statut, STATUT_COLORS[dev.statut]) : "—"}</td>
       <td>${fac ? badge(fac.statut, STATUT_COLORS[fac.statut]) : "—"}</td>
+      <td><span style="color:${paiementColor};font-weight:bold;font-size:12px;">${paiementTxt}</span></td>
       <td class="row-actions"><button onclick="openEvenementDialog(${e.id})">${icon("edit",14)}</button></td>
     </tr>`;
   }).join("") : emptyState(9, "Aucun dossier pour l'instant", "Créer un évènement", "openEvenementDialog(null)");
@@ -821,7 +846,8 @@ function openEventRecap(id) {
       ${line("Devis", dev ? (dev.numero + " · " + dev.statut) : "—")}
       ${line("Facture", fac ? (fac.numero + " · " + fac.statut) : "—")}
       ${line("Acompte reçu", e.acompte_recu === "Oui" ? "Oui" + (e.montant_acompte_recu ? " — " + e.montant_acompte_recu + " €" : "") : "Non")}
-      ${line("Prochain RDV", fmtDateFR(e.prochain_rdv))}
+      ${line("Prochain RDV", (fmtDateFR(e.prochain_rdv) || "—") + (e.prochain_rdv_adefinir ? " · à définir" : ""))}
+      ${line("À relancer", e.arelancer ? "Oui" : "Non")}
     </tbody></table>
     <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px;">
       <h3 style="font-size:14px;margin:0;">${icon("clock",14)} Historique des actions</h3>
@@ -890,7 +916,7 @@ function renderContacts() {
   bindSearch("contact-search", renderContacts);
   const search = (document.getElementById("contact-search").value || "").toLowerCase();
   const fCat = document.getElementById("contact-filter-categorie").value;
-  let rows = [...cache.contacts];
+  let rows = [...cache.contacts].sort((a, b) => contactLabel(a).localeCompare(contactLabel(b), "fr"));
   if (fCat) rows = rows.filter(c => c.categorie === fCat);
   if (search) rows = rows.filter(c => (contactLabel(c) + " " + (c.societe || "") + " " + (c.email || "")).toLowerCase().includes(search));
 
@@ -909,7 +935,7 @@ function renderContacts() {
       <td>${c.telephone || "—"}</td>
       <td>${c.provenance || "—"}</td>
       <td class="row-actions">
-        <button title="Historique / timeline" onclick="openContactTimeline(${c.id})">${icon("activity",14)}</button>
+        <button title="Historique" onclick="openContactTimeline(${c.id})">${icon("activity",14)}</button>
         <button onclick="openContactDialog(${c.id})">${icon("edit",14)}</button>
         <button onclick="confirmDelete('contacts', ${c.id}, renderContacts)">${icon("trash",14)}</button>
         <button title="Fiche contact" onclick="openContactFiche(${c.id})">${icon("more-horizontal",14)}</button>
@@ -970,30 +996,87 @@ function openContactFiche(id) {
       ${line("Type d'évènement d'intérêt", c.type_evenement_interet)}
     </tbody></table>
     <h3 style="font-size:14px;margin:16px 0 8px;">${icon("edit",14)} Notes</h3>
-    <div style="font-size:14px;line-height:1.5;white-space:pre-wrap;background:#FAFAF8;border:1px solid var(--border);border-radius:8px;padding:12px;min-height:50px;">${c.notes || "—"}</div>`;
+    <div style="font-size:14px;line-height:1.5;white-space:pre-wrap;background:#FAFAF8;border:1px solid var(--border);border-radius:8px;padding:12px;min-height:50px;">${c.notes || "—"}</div>
+    ${Array.isArray(c.autres_personnes) && c.autres_personnes.length ? `
+    <h3 style="font-size:14px;margin:16px 0 8px;">${icon("users",14)} Autres personnes liées</h3>
+    <table class="data"><tbody>${c.autres_personnes.map(p => `<tr><td style="width:42%;color:var(--muted);">${[p.prenom, p.nom].filter(Boolean).join(" ") || "—"}</td><td>${[p.email, p.telephone, p.adresse].filter(Boolean).join(" · ") || "—"}</td></tr>`).join("")}</tbody></table>` : ""}`;
   showInfoModal("Fiche contact", html);
 }
 
+let contactPersonnesState = [];
+const BLANK_PERSONNE = () => ({ nom: "", prenom: "", email: "", telephone: "", adresse: "" });
+
 function openContactDialog(id) {
   const row = id ? cache.contacts.find(c => c.id === id) : {};
-  openModal({
-    title: id ? "Modifier le contact" : "Nouveau contact",
-    table: "contacts", id,
-    fields: [
-      { key: "nom", label: "Nom", type: "text", value: row.nom },
-      { key: "prenom", label: "Prénom", type: "text", value: row.prenom },
-      { key: "categorie", label: "Catégorie de personne", type: "select-other", options: CATEGORIES_CONTACT, value: row.categorie || "Client", allowEmpty: false },
-      { key: "societe", label: "Société / entreprise", type: "text", value: row.societe },
-      { key: "poste", label: "Poste (si entreprise)", type: "text", value: row.poste },
-      { key: "email", label: "Email", type: "text", value: row.email },
-      { key: "telephone", label: "Téléphone", type: "text", value: row.telephone },
-      { key: "adresse", label: "Adresse", type: "textarea", value: row.adresse },
-      { key: "provenance", label: "Provenance", type: "select-other", options: PROVENANCES, value: row.provenance, allowEmpty: true },
-      { key: "type_evenement_interet", label: "Type d'évènement d'intérêt", type: "select-other", options: TYPES_EVENEMENT, value: row.type_evenement_interet, allowEmpty: true },
-      { key: "notes", label: "Notes", type: "textarea", value: row.notes },
-    ],
-    onSaved: refreshAll,
-  });
+  contactPersonnesState = Array.isArray(row.autres_personnes) && row.autres_personnes.length ? JSON.parse(JSON.stringify(row.autres_personnes)) : [];
+
+  const html = `
+    <div class="field"><label>Nom</label><input name="nom" value="${escapeAttr(row.nom || "")}"></div>
+    <div class="field"><label>Prénom</label><input name="prenom" value="${escapeAttr(row.prenom || "")}"></div>
+    <div class="field"><label>Catégorie de personne</label>
+      <select name="categorie">${CATEGORIES_CONTACT.map(c => `<option value="${c}" ${c === (row.categorie || "Client") ? "selected" : ""}>${c}</option>`).join("")}</select>
+    </div>
+    <div class="field"><label>Société / entreprise</label><input name="societe" value="${escapeAttr(row.societe || "")}"></div>
+    <div class="field"><label>Poste (si entreprise)</label><input name="poste" value="${escapeAttr(row.poste || "")}"></div>
+    <div class="field"><label>Email</label><input name="email" value="${escapeAttr(row.email || "")}"></div>
+    <div class="field"><label>Téléphone</label><input name="telephone" value="${escapeAttr(row.telephone || "")}"></div>
+    <div class="field"><label>Adresse</label><textarea name="adresse">${row.adresse || ""}</textarea></div>
+    <div class="field"><label>Provenance</label><input name="provenance" list="contact-provenance-list" value="${escapeAttr(row.provenance || "")}"></div>
+    <datalist id="contact-provenance-list">${PROVENANCES.map(p => `<option value="${escapeAttr(p)}">`).join("")}</datalist>
+    <div class="field"><label>Type d'évènement d'intérêt</label><input name="type_evenement_interet" list="contact-typeevt-list" value="${escapeAttr(row.type_evenement_interet || "")}"></div>
+    <datalist id="contact-typeevt-list">${TYPES_EVENEMENT.map(t => `<option value="${escapeAttr(t)}">`).join("")}</datalist>
+    <div class="field"><label>Notes</label><textarea name="notes">${row.notes || ""}</textarea></div>
+    <div class="field"><label>Autres personnes liées (ex : mariage à deux)</label>
+      <div id="contact-personnes-list"></div>
+      <button type="button" class="btn secondary" id="contact-add-personne">${icon("plus", 13)} Ajouter une personne</button>
+    </div>`;
+
+  openRawModal(id ? "Modifier le contact" : "Nouveau contact", html, () => saveContactDialog(id));
+  document.getElementById("modal-delete").style.display = id ? "inline-block" : "none";
+  if (id) document.getElementById("modal-delete").onclick = () => { closeModal(); confirmDelete("contacts", id, renderContacts); };
+
+  renderContactPersonnes();
+  document.getElementById("contact-add-personne").addEventListener("click", () => { contactPersonnesState.push(BLANK_PERSONNE()); renderContactPersonnes(); });
+}
+
+function renderContactPersonnes() {
+  const c = document.getElementById("contact-personnes-list");
+  c.innerHTML = contactPersonnesState.map((p, i) => `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <input data-pi="${i}" data-pk="nom" placeholder="Nom" value="${escapeAttr(p.nom || "")}" style="padding:7px 8px;border:1px solid var(--border);border-radius:5px;">
+      <input data-pi="${i}" data-pk="prenom" placeholder="Prénom" value="${escapeAttr(p.prenom || "")}" style="padding:7px 8px;border:1px solid var(--border);border-radius:5px;">
+      <input data-pi="${i}" data-pk="email" placeholder="Email" value="${escapeAttr(p.email || "")}" style="padding:7px 8px;border:1px solid var(--border);border-radius:5px;">
+      <input data-pi="${i}" data-pk="telephone" placeholder="Téléphone" value="${escapeAttr(p.telephone || "")}" style="padding:7px 8px;border:1px solid var(--border);border-radius:5px;">
+      <input data-pi="${i}" data-pk="adresse" placeholder="Adresse" value="${escapeAttr(p.adresse || "")}" style="grid-column:1 / -1;padding:7px 8px;border:1px solid var(--border);border-radius:5px;">
+      <button type="button" onclick="removeContactPersonne(${i})" style="grid-column:1 / -1;background:none;border:none;color:var(--danger);font-size:12px;text-align:left;">${icon("trash",13)} Retirer cette personne</button>
+    </div>`).join("");
+  c.querySelectorAll("[data-pi]").forEach(el => el.addEventListener("input", (e) => {
+    contactPersonnesState[Number(e.target.dataset.pi)][e.target.dataset.pk] = e.target.value;
+  }));
+}
+function removeContactPersonne(i) { contactPersonnesState.splice(i, 1); renderContactPersonnes(); }
+
+async function saveContactDialog(id) {
+  const form = document.getElementById("modal-form");
+  const values = {
+    nom: form.elements["nom"].value || null,
+    prenom: form.elements["prenom"].value || null,
+    categorie: form.elements["categorie"].value,
+    societe: form.elements["societe"].value || null,
+    poste: form.elements["poste"].value || null,
+    email: form.elements["email"].value || null,
+    telephone: form.elements["telephone"].value || null,
+    adresse: form.elements["adresse"].value || null,
+    provenance: form.elements["provenance"].value || null,
+    type_evenement_interet: form.elements["type_evenement_interet"].value || null,
+    notes: form.elements["notes"].value || null,
+    autres_personnes: contactPersonnesState.filter(p => p.nom || p.prenom),
+  };
+  const saved = id ? await updateRow("contacts", id, values) : await insertRow("contacts", values);
+  if (!saved) return;
+  showToast(id ? "Contact mis à jour" : "Contact ajouté");
+  closeModal();
+  await refreshAll();
 }
 
 // ========================================================================
@@ -1006,9 +1089,15 @@ async function autoExpireDevis() {
     const val = d.date_validite || (d.date_creation ? addDaysISO(d.date_creation.slice(0, 10), 30) : null);
     return val && val < today;
   });
-  if (!expiring.length) return [];
-  for (const d of expiring) await updateRow("devis", d.id, { statut: "Expiré" });
-  await refreshCache();
+  if (expiring.length) { for (const d of expiring) await updateRow("devis", d.id, { statut: "Expiré" }); await refreshCache(); }
+
+  const passing = cache.evenements.filter(e => {
+    if (["Passé", "Annulé"].includes(e.statut)) return false;
+    const endDate = e.date_fin || e.date_evenement;
+    return endDate && endDate < today;
+  });
+  if (passing.length) { for (const e of passing) await updateRow("evenements", e.id, { statut: "Passé" }); await refreshCache(); }
+
   return expiring;
 }
 function nextDevisNumero() {
@@ -1044,7 +1133,7 @@ function renderDevis() {
       <td>${e ? eventLabel(e) : "—"}</td>
       <td><input type="date" value="${(d.date_creation || "").slice(0, 10)}" onchange="updateDevisDateCreation(${d.id}, this.value)" style="border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-size:12px;"></td>
       <td>${d.montant_ttc ? d.montant_ttc + " €" : "—"}</td>
-      <td>${badge(d.statut, STATUT_COLORS[d.statut])}</td>
+      <td>${inlineStatusSelect("devis", d.id, "statut", STATUTS_DEVIS, d.statut, "renderDevis")}</td>
       <td class="row-actions">
         <button title="Aperçu rapide" onclick="generateDevisPDF(${d.id}, true)">${icon("eye",14)}</button>
         <button title="Éditer le devis" onclick="openDevisEditor(${d.id})">${icon("edit",14)}</button>
@@ -1128,7 +1217,9 @@ function renderEditorLines() {
   const tb = document.getElementById("ed-lines");
   tb.innerHTML = edState.lignes.map((l, i) => `
     <tr data-i="${i}">
-      <td><input list="ed-desig" data-k="designation" value="${(l.designation || "").replace(/"/g, "&quot;")}"></td>
+      <td><input list="ed-desig" data-k="designation" value="${(l.designation || "").replace(/"/g, "&quot;")}">
+        <button type="button" title="Détail (facultatif, imprimé en note de bas de tableau)" onclick="editLigneDetail(${i})" style="background:none;border:none;color:${l.detail ? "var(--accent)" : "var(--muted)"};font-size:11px;padding:2px 0;">${icon("edit", 11)} Détail${l.detail ? " ✓" : ""}</button>
+      </td>
       <td><input type="number" data-k="qte" min="0" step="1" value="${l.qte != null ? l.qte : 1}" style="width:60px;"></td>
       <td><input type="number" data-k="pu_ttc" min="0" step="0.01" value="${l.pu_ttc != null ? l.pu_ttc : ""}" style="width:80px;"></td>
       <td><input type="number" data-k="remise" min="0" max="100" step="1" value="${l.remise != null ? l.remise : 0}" style="width:60px;"></td>
@@ -1138,7 +1229,24 @@ function renderEditorLines() {
       <td class="ro" data-ro="ttc"></td>
       <td><button class="del" title="Supprimer" onclick="removeEditorLine(${i})">${icon("x",13)}</button></td>
     </tr>`).join("");
+  tb.querySelectorAll('[data-k="designation"]').forEach(inp => {
+    inp.addEventListener("change", () => {
+      const i = Number(inp.closest("tr").dataset.i);
+      if (!edState.lignes[i].detail) {
+        const match = cache.grille_tarifaire.find(g => g.nom_presta === inp.value);
+        if (match && match.details) { edState.lignes[i].detail = match.details; readEditorToState(); renderEditorLines(); }
+      }
+    });
+  });
   recomputeEditor();
+}
+function editLigneDetail(i) {
+  readEditorToState();
+  const current = edState.lignes[i].detail || "";
+  const val = prompt("Détail de cette prestation (affiché en note de bas de tableau sur le devis) :", current);
+  if (val === null) return;
+  edState.lignes[i].detail = val;
+  renderEditorLines();
 }
 function readEditorToState() {
   document.querySelectorAll("#ed-lines tr").forEach(tr => {
@@ -1212,16 +1320,17 @@ function openCgvPicker() {
   readEditorToState();
   const d = findDevis(edState.id);
   const already = (d && Array.isArray(d.cgv)) ? d.cgv.slice() : [];
+  const CGV_LIST = getCgvTexts();
   const html = `<p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;">Coche les conditions dans l'ordre où elles doivent apparaître sur le devis.</p>
-    <div class="cgv-list" id="cgv-list">${CGV_OPTIONS.map((c, i) => {
+    <div class="cgv-list" id="cgv-list">${CGV_LIST.map((c, i) => {
       const pos = already.indexOf(c);
       return `<label><span class="cgv-order" data-cgv="${i}">${pos >= 0 ? (pos + 1) : ""}</span>
         <input type="checkbox" data-cgv-cb="${i}" ${pos >= 0 ? "checked" : ""}> ${c}</label>`;
     }).join("")}</div>`;
   openRawModal("Conditions générales de vente", html, async () => {
     // recueille l'ordre de sélection
-    const order = window._cgvOrder || already.map(c => CGV_OPTIONS.indexOf(c)).filter(x => x >= 0);
-    const chosen = order.map(i => CGV_OPTIONS[i]);
+    const order = window._cgvOrder || already.map(c => CGV_LIST.indexOf(c)).filter(x => x >= 0);
+    const chosen = order.map(i => CGV_LIST[i]);
     await updateRow("devis", edState.id, { cgv: chosen, finalise: true });
     await refreshCache();
     closeModal();
@@ -1232,7 +1341,7 @@ function openCgvPicker() {
     generateDevisPDF(edState.id);
   });
   // gestion de l'ordre de clic
-  window._cgvOrder = already.map(c => CGV_OPTIONS.indexOf(c)).filter(x => x >= 0);
+  window._cgvOrder = already.map(c => CGV_LIST.indexOf(c)).filter(x => x >= 0);
   document.querySelectorAll("[data-cgv-cb]").forEach(cb => {
     cb.addEventListener("change", () => {
       const i = Number(cb.dataset.cgvCb);
@@ -1314,9 +1423,12 @@ function generateDevisPDF(id, preview) {
   doc.setTextColor(0); doc.setFontSize(10); y += 3;
   doc.line(20, y, 195, y); y += 6;
   let tHT = 0, tTVA = 0, tTTC = 0;
+  const footnotes = [];
   lignes.forEach(l => {
     const r = computeLine(l); tHT += r.ht; tTVA += r.tva; tTTC += r.ttc;
-    const desig = doc.splitTextToSize(l.designation || "—", 82);
+    let designationTxt = l.designation || "—";
+    if (l.detail) { footnotes.push(l.detail); designationTxt += ` (*${footnotes.length})`; }
+    const desig = doc.splitTextToSize(designationTxt, 82);
     doc.text(desig, 20, y);
     doc.text(String(l.qte ?? ""), 108, y);
     doc.text(Number(l.pu_ttc || 0).toFixed(2), 122, y);
@@ -1326,6 +1438,11 @@ function generateDevisPDF(id, preview) {
     y += Math.max(7, desig.length * 5);
     if (y > 250) { doc.addPage(); y = 20; }
   });
+  if (footnotes.length) {
+    doc.setFontSize(8.5); doc.setTextColor(90);
+    footnotes.forEach((f, i) => { const t = doc.splitTextToSize(`*${i + 1} ${f}`, 175); doc.text(t, 20, y); y += t.length * 4; });
+    doc.setTextColor(0); y += 3;
+  }
   y += 2; doc.line(20, y, 195, y); y += 8;
   doc.setFontSize(11);
   doc.text("Total HT : " + round2(tHT).toFixed(2) + " €", 130, y); y += 6;
@@ -1338,8 +1455,17 @@ function generateDevisPDF(id, preview) {
     d.cgv.forEach((c2, i) => { const t = doc.splitTextToSize((i + 1) + ". " + c2, 175); doc.text(t, 20, y); y += t.length * 5 + 1; if (y > 255) { doc.addPage(); y = 20; } });
   }
   drawFooter(doc);
-  if (preview) window.open(doc.output("bloburl"), "_blank");
+  if (preview) openPdfPreview(d.numero || "Devis", doc.output("bloburl"));
   else doc.save((d.numero || "devis").replace(/\s+/g, "_") + ".pdf");
+}
+function openPdfPreview(title, blobUrl) {
+  document.getElementById("pdf-preview-title").textContent = title;
+  document.getElementById("pdf-preview-iframe").src = blobUrl;
+  document.getElementById("pdf-preview-overlay").classList.add("open");
+}
+function closePdfPreview() {
+  document.getElementById("pdf-preview-overlay").classList.remove("open");
+  document.getElementById("pdf-preview-iframe").src = "about:blank";
 }
 
 // ========================================================================
@@ -1360,59 +1486,169 @@ function renderFactures() {
   if (search) rows = rows.filter(f => (contactLabel(findContact(f.contact_id)) + " " + (f.numero || "")).toLowerCase().includes(search));
 
   const tbody = document.getElementById("facture-tbody");
-  tbody.innerHTML = rows.length ? rows.map(f => {
-    const dev = f.devis_id ? findDevis(f.devis_id) : null;
-    const pdfBtn = f.pdf_path ? `<button title="Voir le PDF joint" onclick="downloadAttachment(findFacture(${f.id}).pdf_path)">${icon("paperclip", 14)}</button>` : "";
-    return `<tr>
+  const byContact = {};
+  rows.forEach(f => { const key = f.contact_id || "none"; (byContact[key] = byContact[key] || []).push(f); });
+  const groupKeys = Object.keys(byContact).sort((a, b) => contactLabel(findContact(Number(a))).localeCompare(contactLabel(findContact(Number(b))), "fr"));
+
+  tbody.innerHTML = rows.length ? groupKeys.map(key => {
+    const group = byContact[key];
+    const totalTTC = group.reduce((s, f) => s + (Number(f.montant_ttc) || 0), 0);
+    const groupHeader = `<tr style="background:#EFEEE9;"><td colspan="7" style="font-weight:bold;padding:8px 14px;">${contactLabel(findContact(Number(key)))} — ${group.length} facture${group.length > 1 ? "s" : ""} · ${totalTTC} € au total</td></tr>`;
+    const groupRows = group.map(f => {
+      const dev = f.devis_id ? findDevis(f.devis_id) : null;
+      const pdfBtn = f.pdf_path ? `<button title="Voir le PDF joint" onclick="downloadAttachment(findFacture(${f.id}).pdf_path)">${icon("paperclip", 14)}</button>` : "";
+      return `<tr>
       <td>${f.numero || "—"}</td>
-      <td>${contactLabel(findContact(f.contact_id))}</td>
+      <td></td>
       <td>${dev ? (dev.numero || ("Devis #" + dev.id)) : "—"}</td>
       <td>${fmtDateFR(f.date_facture)}</td>
       <td>${f.montant_ttc ? f.montant_ttc + " €" : "—"}</td>
-      <td>${badge(f.statut, STATUT_COLORS[f.statut])}</td>
+      <td>${inlineStatusSelect("factures", f.id, "statut", STATUTS_FACTURE, f.statut, "renderFactures")}</td>
       <td class="row-actions">
         <button title="Télécharger la facture (PDF)" onclick="generateFacturePDF(${f.id})">${icon("download",14)}</button>
         ${pdfBtn}
         <button onclick="openFactureDialog(${f.id})">${icon("edit",14)}</button>
         <button onclick="confirmDelete('factures', ${f.id}, renderFactures)">${icon("trash",14)}</button>
       </td></tr>`;
+    }).join("");
+    return groupHeader + groupRows;
   }).join("") : emptyState(7, "Aucune facture pour l'instant", "Créer une facture", "openFactureDialog(null)");
 }
-function factureFields(row) {
-  return [
-    { key: "numero", label: "Numéro", type: "text", value: row.numero != null ? row.numero : nextFactureNumero() },
-    { key: "contact_id", label: "Client / contact", type: "select-raw", optionsHtml: `<option value="">—</option>` + contactOptionsHtml(row.contact_id), value: row.contact_id, numeric: true },
-    { key: "devis_id", label: "Devis lié", type: "select-raw", optionsHtml: `<option value="">— Aucun —</option>` + devisOptionsHtml(row.devis_id), value: row.devis_id, numeric: true },
-    { key: "type_evenement", label: "Type d'évènement", type: "select-other", options: TYPES_EVENEMENT, value: row.type_evenement, allowEmpty: true },
-    { key: "date_evenement", label: "Date de l'évènement", type: "date", value: row.date_evenement },
-    { key: "date_facture", label: "Date de la facture", type: "date", value: row.date_facture || todayStr() },
-    { key: "date_echeance", label: "Date d'échéance", type: "date", value: row.date_echeance },
-    { key: "montant_ht", label: "Montant HT (€)", type: "number", value: row.montant_ht },
-    { key: "tva", label: "TVA (%)", type: "select", options: TVA_RATES, value: row.tva != null ? row.tva : 20 },
-    { key: "montant_ttc", label: "Montant TTC (€) — calculé", type: "computed", value: row.montant_ttc },
-    { key: "montant_acompte", label: "Acompte déjà versé (€)", type: "number", value: row.montant_acompte },
-    { key: "statut", label: "Statut", type: "select", options: STATUTS_FACTURE, value: row.statut || "Brouillon" },
-    { key: "pdf_signe_file", label: "Joindre un PDF (facture signée / preuve)", type: "file", accept: "application/pdf" },
-    { key: "notes", label: "Notes", type: "textarea", value: row.notes },
-  ];
-}
-function factureOnRender(form) {
-  const calc = () => { const ht = Number(form.elements["montant_ht"].value || 0); const tva = Number(form.elements["tva"].value || 0); form.elements["montant_ttc"].value = ht ? round2(ht * (1 + tva / 100)) : ""; };
-  form.elements["montant_ht"].addEventListener("input", calc);
-  form.elements["tva"].addEventListener("change", calc);
-  form.elements["devis_id"].addEventListener("change", () => {
-    const d = findDevis(Number(form.elements["devis_id"].value)); if (!d) return;
-    const c = devisContact(d);
-    if (!form.elements["contact_id"].value && c) form.elements["contact_id"].value = c.id;
-    if (!form.elements["montant_ht"].value && d.montant_ht != null) form.elements["montant_ht"].value = d.montant_ht;
-    calc();
-  });
-  calc();
-}
+let factureLignesState = [];
 function openFactureDialog(id, prefill) {
   const row = id ? (findFacture(id) || {}) : (prefill || {});
-  openModal({ title: id ? "Modifier la facture" : "Nouvelle facture", table: "factures", id, fields: factureFields(row), onRender: factureOnRender, onSaved: refreshAll });
+  factureLignesState = Array.isArray(row.lignes) && row.lignes.length ? JSON.parse(JSON.stringify(row.lignes)) : [{ designation: "", qte: 1, pu_ttc: "" }];
+  const dev = row.devis_id ? findDevis(row.devis_id) : null;
+
+  const html = `
+    <div class="field"><label>Numéro</label><input name="numero" value="${escapeAttr(row.numero != null ? row.numero : nextFactureNumero())}"></div>
+    <div class="field"><label>Client / contact</label><select name="contact_id">${`<option value="">—</option>` + contactOptionsHtml(row.contact_id)}</select></div>
+    <div class="field"><label>Devis lié</label><select name="devis_id">${`<option value="">— Aucun —</option>` + devisOptionsHtml(row.devis_id)}</select></div>
+    <div class="field"><label>Date de l'évènement</label><input type="date" name="date_evenement" value="${row.date_evenement || ""}"></div>
+    <div class="field"><label>Type facture</label>
+      <select name="type_facture_id" id="fac-type-select">
+        <option value="">— Choisir —</option>
+        ${cache.types_facture.map(t => `<option value="${t.id}" ${row.type_facture_id === t.id ? "selected" : ""}>${t.designation}</option>`).join("")}
+        <option value="SOLDE" ${row.type_facture_id === "SOLDE" ? "selected" : ""}>Solde</option>
+        <option value="MANUEL" ${row.type_facture_id === "MANUEL" || !row.type_facture_id ? "selected" : ""}>Facture manuelle</option>
+      </select>
+    </div>
+    <div class="field"><label>Date de la facture</label><input type="date" name="date_facture" value="${row.date_facture || todayStr()}"></div>
+    <div class="field"><label>Date d'échéance</label><input type="date" name="date_echeance" value="${row.date_echeance || ""}"></div>
+    <div id="fac-solde-info" style="display:none;font-size:12.5px;color:var(--muted);background:#FAFAF8;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:12px;"></div>
+    <div id="fac-manuel-zone" class="field" style="display:none;">
+      <label>Lignes de la facture</label>
+      <div id="fac-lignes-list"></div>
+      <button type="button" class="btn secondary" id="fac-add-ligne">${icon("plus",13)} Ajouter une ligne</button>
+    </div>
+    <div class="field"><label>Montant TTC (€)${row.type_facture_id && row.type_facture_id !== "MANUEL" ? " — calculé automatiquement" : ""}</label><input type="number" name="montant_ttc" value="${row.montant_ttc != null ? row.montant_ttc : ""}"></div>
+    <div class="field"><label>Statut</label>
+      <select name="statut" id="fac-statut-select">${STATUTS_FACTURE.map(s => `<option value="${s}" ${s === (row.statut || "Brouillon") ? "selected" : ""}>${s}</option>`).join("")}</select>
+    </div>
+    <div class="field" id="fac-datepaiement-field" style="display:none;"><label>Date de paiement</label><input type="date" name="date_paiement" value="${row.date_paiement || ""}"></div>
+    <div class="field"><label>Joindre un PDF (facture signée / preuve)</label><input type="file" id="fac-pdf" accept="application/pdf">
+      ${row.pdf_path ? `<div style="margin-top:6px;"><button type="button" class="btn secondary" onclick="downloadAttachment('${row.pdf_path}')">${icon("paperclip",13)} Voir le PDF actuel</button></div>` : ""}
+    </div>
+    <div class="field"><label>Notes</label><textarea name="notes">${row.notes || ""}</textarea></div>`;
+
+  openRawModal(id ? "Modifier la facture" : "Nouvelle facture", html, () => saveFactureDialog(id));
+  document.getElementById("modal-delete").style.display = id ? "inline-block" : "none";
+  if (id) document.getElementById("modal-delete").onclick = () => { closeModal(); confirmDelete("factures", id, renderFactures); };
+
+  const form = document.getElementById("modal-form");
+  const applyType = () => {
+    const typeVal = form.elements["type_facture_id"].value;
+    const devisId = Number(form.elements["devis_id"].value) || null;
+    const d = devisId ? findDevis(devisId) : null;
+    const contactId = Number(form.elements["contact_id"].value) || null;
+    const dateEvt = form.elements["date_evenement"].value;
+
+    document.getElementById("fac-manuel-zone").style.display = typeVal === "MANUEL" ? "block" : "none";
+    document.getElementById("fac-solde-info").style.display = typeVal === "SOLDE" ? "block" : "none";
+
+    if (typeVal === "SOLDE" && d) {
+      const acomptes = cache.factures.filter(f => f.devis_id === d.id && f.statut === "Payée" && f.id !== id);
+      const totalPaye = acomptes.reduce((s, f) => s + (Number(f.montant_ttc) || 0), 0);
+      const solde = round2((Number(d.montant_ttc) || 0) - totalPaye);
+      form.elements["montant_ttc"].value = solde;
+      document.getElementById("fac-solde-info").innerHTML = acomptes.length
+        ? "Acomptes déjà réglés :<br>" + acomptes.map(f => `• ${f.numero || "Facture"} — ${f.montant_ttc} € le ${fmtDateFR(f.date_paiement) || "date inconnue"}`).join("<br>") + `<br><strong>Solde restant : ${solde} €</strong>`
+        : `Aucun acompte réglé enregistré. Solde total : ${solde} €`;
+    } else if (typeVal && typeVal !== "MANUEL") {
+      const t = cache.types_facture.find(x => String(x.id) === typeVal);
+      if (t && d) {
+        const montant = round2((Number(d.montant_ttc) || 0) * (Number(t.pourcentage) || 0) / 100);
+        form.elements["montant_ttc"].value = montant;
+      }
+      if (t && t.echeance_nombre != null && dateEvt) {
+        const eche = t.echeance_unite === "mois" ? addMonthsISO(dateEvt, -t.echeance_nombre) : addDaysISO(dateEvt, -t.echeance_nombre);
+        form.elements["date_echeance"].value = eche;
+      }
+    }
+    if (!contactId && d) { const c = devisContact(d); if (c) form.elements["contact_id"].value = c.id; }
+    if (!dateEvt && d) { const dd = devisDateEvt(d); if (dd) form.elements["date_evenement"].value = dd; }
+  };
+  form.elements["type_facture_id"].addEventListener("change", applyType);
+  form.elements["devis_id"].addEventListener("change", applyType);
+  applyType();
+
+  const togglePaiement = () => { document.getElementById("fac-datepaiement-field").style.display = form.elements["statut"].value === "Payée" ? "block" : "none"; };
+  form.elements["statut"].addEventListener("change", togglePaiement);
+  togglePaiement();
+
+  renderFactureLignes();
+  document.getElementById("fac-add-ligne").addEventListener("click", () => { factureLignesState.push({ designation: "", qte: 1, pu_ttc: "" }); renderFactureLignes(); });
 }
+function renderFactureLignes() {
+  const c = document.getElementById("fac-lignes-list");
+  c.innerHTML = factureLignesState.map((l, i) => `
+    <div style="display:flex;gap:8px;margin-bottom:6px;">
+      <input data-fi="${i}" data-fk="designation" placeholder="Désignation" value="${escapeAttr(l.designation || "")}" style="flex:1;padding:7px 8px;border:1px solid var(--border);border-radius:5px;">
+      <input type="number" data-fi="${i}" data-fk="qte" placeholder="Qté" value="${l.qte != null ? l.qte : 1}" style="width:60px;padding:7px 8px;border:1px solid var(--border);border-radius:5px;">
+      <input type="number" data-fi="${i}" data-fk="pu_ttc" placeholder="PU TTC" value="${l.pu_ttc != null ? l.pu_ttc : ""}" style="width:90px;padding:7px 8px;border:1px solid var(--border);border-radius:5px;">
+      <button type="button" onclick="removeFactureLigne(${i})" style="background:none;border:none;color:var(--danger);">${icon("x",13)}</button>
+    </div>`).join("");
+  c.querySelectorAll("[data-fi]").forEach(el => el.addEventListener("input", (e) => {
+    const i = Number(e.target.dataset.fi), k = e.target.dataset.fk;
+    factureLignesState[i][k] = k === "designation" ? e.target.value : (e.target.value === "" ? "" : Number(e.target.value));
+    if (k !== "designation") {
+      const total = round2(factureLignesState.reduce((s, l) => s + (Number(l.qte) || 0) * (Number(l.pu_ttc) || 0), 0));
+      document.querySelector('[name="montant_ttc"]').value = total;
+    }
+  }));
+}
+function removeFactureLigne(i) { factureLignesState.splice(i, 1); if (!factureLignesState.length) factureLignesState.push({ designation: "", qte: 1, pu_ttc: "" }); renderFactureLignes(); }
+
+async function saveFactureDialog(id) {
+  const form = document.getElementById("modal-form");
+  const typeVal = form.elements["type_facture_id"].value;
+  const values = {
+    numero: form.elements["numero"].value || null,
+    contact_id: Number(form.elements["contact_id"].value) || null,
+    devis_id: Number(form.elements["devis_id"].value) || null,
+    date_evenement: form.elements["date_evenement"].value || null,
+    type_facture_id: typeVal === "SOLDE" || typeVal === "MANUEL" ? typeVal : (Number(typeVal) || null),
+    date_facture: form.elements["date_facture"].value || null,
+    date_echeance: form.elements["date_echeance"].value || null,
+    montant_ttc: form.elements["montant_ttc"].value === "" ? null : Number(form.elements["montant_ttc"].value),
+    statut: form.elements["statut"].value,
+    date_paiement: form.elements["date_paiement"] ? (form.elements["date_paiement"].value || null) : null,
+    notes: form.elements["notes"].value || null,
+    lignes: typeVal === "MANUEL" ? factureLignesState.filter(l => l.designation) : [],
+  };
+  let saved = id ? await updateRow("factures", id, values) : await insertRow("factures", values);
+  if (!saved) return;
+  const fileEl = document.getElementById("fac-pdf");
+  if (fileEl && fileEl.files && fileEl.files[0]) {
+    const path = `${currentUser.id}/factures-${saved.id}.pdf`;
+    const { error } = await sb.storage.from("devis-signes").upload(path, fileEl.files[0], { upsert: true, contentType: "application/pdf" });
+    if (!error) await updateRow("factures", saved.id, { pdf_path: path });
+  }
+  showToast(id ? "Facture mise à jour" : "Facture créée");
+  closeModal();
+  await refreshAll();
+}
+
 function createFactureFromDevis(devisId) {
   const d = findDevis(devisId); if (!d) return;
   const c = devisContact(d);
@@ -1427,9 +1663,8 @@ function generateFacturePDF(id) {
   if (!window.jspdf) { showToast("Générateur PDF indisponible (hors-ligne)"); return; }
   const c = findContact(f.contact_id), dev = f.devis_id ? findDevis(f.devis_id) : null;
   const { jsPDF } = window.jspdf; const doc = new jsPDF();
-  const ht = Number(f.montant_ht || 0), tva = Number(f.tva != null ? f.tva : 20);
-  const mtva = round2(ht * tva / 100), ttc = f.montant_ttc != null ? Number(f.montant_ttc) : round2(ht + mtva);
-  const acompte = Number(f.montant_acompte || 0), net = round2(ttc - acompte);
+  const ttc = Number(f.montant_ttc || 0);
+  const typeLabel = f.type_facture_id === "SOLDE" ? "Solde" : f.type_facture_id === "MANUEL" ? "Facture manuelle" : (cache.types_facture.find(t => t.id === f.type_facture_id) || {}).designation;
   drawEmetteur(doc);
   doc.setFontSize(20); doc.text("FACTURE", 20, 22); doc.setFontSize(11);
   doc.text("N° : " + (f.numero || "—"), 20, 34);
@@ -1440,10 +1675,15 @@ function generateFacturePDF(id) {
   let y = 75;
   [contactLabel(c), c && c.societe, c && c.email, c && c.telephone, c && c.adresse].filter(Boolean).forEach(l => { doc.text(String(l), 20, y); y += 7; });
   y += 6; doc.setFontSize(12); doc.text("Détail", 20, y); y += 9; doc.setFontSize(11);
-  const rows = [["Type d'évènement", f.type_evenement || "—"], ["Date de l'évènement", fmtDateFR(f.date_evenement) || "—"], ["Montant HT", ht ? ht.toFixed(2) + " €" : "—"], ["TVA (" + tva + "%)", mtva.toFixed(2) + " €"], ["Montant TTC", ttc.toFixed(2) + " €"]];
-  if (acompte) rows.push(["Acompte déjà versé", "- " + acompte.toFixed(2) + " €"]);
-  rows.forEach(([k, v]) => { doc.text(k, 20, y); doc.text(v, 130, y); y += 7; });
-  y += 6; doc.setFontSize(13); doc.text("NET À PAYER : " + net.toFixed(2) + " €", 20, y);
+
+  if (Array.isArray(f.lignes) && f.lignes.length) {
+    f.lignes.forEach(l => { doc.text(`${l.designation} (x${l.qte || 1})`, 20, y); doc.text(round2((Number(l.qte) || 0) * (Number(l.pu_ttc) || 0)).toFixed(2) + " €", 150, y); y += 7; });
+  } else {
+    const rows = [[typeLabel || "Type d'évènement", f.type_evenement || ""], ["Date de l'évènement", fmtDateFR(f.date_evenement) || "—"]].filter(r => r[1]);
+    rows.forEach(([k, v]) => { doc.text(k, 20, y); doc.text(v, 130, y); y += 7; });
+  }
+  y += 4; doc.setFontSize(13); doc.text("MONTANT TTC : " + ttc.toFixed(2) + " €", 20, y);
+  if (f.date_paiement) { y += 9; doc.setFontSize(10); doc.text("Payée le " + fmtDateFR(f.date_paiement), 20, y); }
   if (f.notes) { y += 12; doc.setFontSize(10); doc.text(doc.splitTextToSize("Notes : " + f.notes, 170), 20, y); }
   drawFooter(doc);
   doc.save((f.numero || "facture").replace(/\s+/g, "_") + ".pdf");
@@ -1451,9 +1691,10 @@ function generateFacturePDF(id) {
 
 async function downloadAttachment(pdf_path) {
   if (!pdf_path) { showToast("Aucun PDF joint"); return; }
-  const { data, error } = await sb.storage.from("devis-signes").createSignedUrl(pdf_path, 60);
+  const { data, error } = await sb.storage.from("devis-signes").createSignedUrl(pdf_path, 300);
   if (error) { showToast("PDF introuvable"); console.error(error); return; }
-  window.open(data.signedUrl, "_blank");
+  const name = pdf_path.split("/").pop();
+  openPdfPreview(name, data.signedUrl);
 }
 
 function openContactTimeline(contactId) {
@@ -1478,6 +1719,9 @@ function openContactTimeline(contactId) {
   cache.notes.forEach(n => {
     if (n.contact_id === contactId) items.push({ date: (n.date_modif || n.date_creation), type: "Note", ic: "book", color: "var(--muted)", label: n.titre, onclick: `openNoteEditor(${n.id})` });
   });
+  cache.evenements.filter(e => e.contact_id === contactId).forEach(e => {
+    (e.historique || []).forEach(h => items.push({ date: h.date, type: "Historique évènement", ic: "clock", color: "var(--muted)", label: h.texte, onclick: `openEventRecap(${e.id})` }));
+  });
 
   items.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
@@ -1490,7 +1734,7 @@ function openContactTimeline(contactId) {
       </div>
     </div>`).join("") : `<p style="color:var(--muted);font-size:13px;padding:14px 0;">Aucune activité enregistrée pour ce contact.</p>`;
 
-  showInfoModal("Timeline — " + contactLabel(c), `
+  showInfoModal("Historique — " + contactLabel(c), `
     <p style="margin:0 0 6px;color:var(--muted);font-size:13px;">${c.email || ""}${c.telephone ? " · " + c.telephone : ""}</p>
     <div>${rowsHtml}</div>`);
 }
@@ -1498,6 +1742,7 @@ function openContactTimeline(contactId) {
 // ========================================================================
 //  EVENEMENTS
 // ========================================================================
+let evenementPastShowAll = false;
 function renderEvenements() {
   ensureFilterOptions("evenement-filter-type", TYPES_EVENEMENT);
   ensureFilterOptions("evenement-filter-statut", STATUTS_EVENEMENT);
@@ -1515,45 +1760,56 @@ function renderEvenements() {
   if (fMois) rows = rows.filter(e => ((e.date_evenement || e.mois_seul || "") + "").slice(5, 7) === fMois);
   if (fAnnee) rows = rows.filter(e => ((e.date_evenement || e.mois_seul || "") + "").slice(0, 4) === fAnnee);
 
+  const today = todayStr();
+  const upcoming = rows.filter(e => e.statut !== "Passé");
+  const past = rows.filter(e => e.statut === "Passé").sort((a, b) => (b.date_evenement || "").localeCompare(a.date_evenement || ""));
+  const oneMonthAgo = addDaysISO(today, -31);
+  const pastVisible = evenementPastShowAll ? past : past.filter(e => (e.date_evenement || "") >= oneMonthAgo);
+
   const tbody = document.getElementById("evenement-tbody");
-  tbody.innerHTML = rows.length ? rows.map(e => {
+  tbody.innerHTML = upcoming.length ? upcoming.map(e => {
     const c = findContact(e.contact_id);
     const dev = cache.devis.find(d => d.evenement_id === e.id);
     const fac = cache.factures.find(f => (e.facture_id && f.id === e.facture_id) || (dev && f.devis_id === dev.id));
     const dateTxt = eventDateLabel(e);
     const nb = (e.nb_invites != null ? e.nb_invites : "—") + (e.nb_precision === "Approximatif" ? " ~" : "");
     return `<tr>
-      <td>${dateTxt || "—"}</td>
+      <td>${dateTxt || "—"}${e.statut !== "Confirmé" && e.statut !== "Passé" && e.statut !== "Annulé" ? " ❓" : ""}</td>
       <td>${contactLabel(c)}</td>
       <td>${(c && c.provenance) || "—"}</td>
       <td>${e.type_evenement || "—"}</td>
       <td>${e.type_prestation || "—"}</td>
       <td>${nb}</td>
-      <td>${badge(e.statut, STATUT_COLORS[e.statut])}</td>
+      <td>${inlineStatusSelect("evenements", e.id, "statut", STATUTS_EVENEMENT, e.statut, "renderEvenements")}</td>
       <td>${dev ? badge(dev.statut, STATUT_COLORS[dev.statut]) : "—"}</td>
       <td>${fac ? badge(fac.statut, STATUT_COLORS[fac.statut]) : "—"}</td>
-      <td>${e.derniere_action || "—"}</td>
       <td class="row-actions">
         <button title="Fiche récap" onclick="openEventRecap(${e.id})">${icon("clipboard",14)}</button>
         <button onclick="openEvenementDialog(${e.id})">${icon("edit",14)}</button>
         <button onclick="confirmDelete('evenements', ${e.id}, renderEvenements)">${icon("trash",14)}</button>
       </td></tr>`;
-  }).join("") : emptyState(11, "Aucun évènement pour l'instant", "Ajouter ton premier évènement", "openEvenementDialog(null)");
+  }).join("") : emptyState(9, "Aucun évènement pour l'instant", "Ajouter ton premier évènement", "openEvenementDialog(null)");
+
+  document.getElementById("evenement-past-tbody").innerHTML = pastVisible.length ? pastVisible.map(e => `<tr>
+      <td>${eventDateLabel(e)}</td><td>${contactLabel(findContact(e.contact_id))}</td><td>${e.type_evenement || "—"}</td>
+      <td>${badge(e.statut, STATUT_COLORS[e.statut])}</td>
+      <td class="row-actions"><button title="Fiche récap" onclick="openEventRecap(${e.id})">${icon("clipboard",14)}</button></td>
+    </tr>`).join("") : `<tr class="empty-row"><td colspan="5">Aucun évènement passé</td></tr>`;
+  document.getElementById("evenement-past-more-wrap").style.display = (!evenementPastShowAll && past.length > pastVisible.length) ? "block" : "none";
 }
 
 function openEvenementDialog(id, defaultDate) {
   const row = id ? cache.evenements.find(e => e.id === id) : {};
-  let adefinirFlag = false;
+  let adefinirFlag = false, arelancerFlag = false;
   openModal({
     title: id ? "Modifier l'évènement" : "Nouvel évènement",
     table: "evenements", id,
     fields: [
-      { key: "date_evenement", label: "Date", type: "date", value: row.date_evenement || defaultDate },
-      { key: "plusieurs_jours", label: "Sur plusieurs jours", type: "checkbox", value: !!row.date_fin },
-      { key: "date_fin", label: "Date de fin", type: "date", value: row.date_fin },
+      { key: "date_evenement", label: "Date (début)", type: "date", value: row.date_evenement || defaultDate },
+      { key: "date_fin", label: "Date de fin (si sur plusieurs jours)", type: "date", value: row.date_fin },
       { key: "date_flexible", label: "Date flexible", type: "checkbox", value: row.date_flexible },
       { key: "mois_seul", label: "Mois (si date flexible)", type: "month", value: row.mois_seul },
-      { key: "contact_id", label: "Contact", type: "select-raw", optionsHtml: `<option value="">—</option>` + contactOptionsHtml(row.contact_id), value: row.contact_id, numeric: true },
+      { key: "contact_id", label: "Contact", type: "select-raw", optionsHtml: `<option value="">—</option>` + contactOptionsHtml(row.contact_id, ["Client", "Prospect"]), value: row.contact_id, numeric: true },
       { key: "provenance", label: "Provenance (reprise du contact)", type: "text", value: row.provenance },
       { key: "type_evenement", label: "Type d'évènement", type: "select-other", options: TYPES_EVENEMENT, value: row.type_evenement, allowEmpty: true },
       { key: "type_prestation", label: "Type de prestation", type: "select", options: TYPES_PRESTATION, value: row.type_prestation },
@@ -1569,7 +1825,8 @@ function openEvenementDialog(id, defaultDate) {
       { key: "budget", label: "Budget (€)", type: "number", value: row.budget },
       { key: "derniere_action", label: "Dernière action", type: "text", value: row.derniere_action },
       { key: "prochain_rdv", label: "Prochain RDV", type: "date", value: row.prochain_rdv },
-      { key: "prochain_rdv_adefinir", label: "Prochain RDV à définir (crée une tâche « Prendre rendez-vous »)", type: "checkbox", value: false },
+      { key: "prochain_rdv_adefinir", label: "Prochain RDV à définir (crée une tâche « Prendre rendez-vous »)", type: "checkbox", value: !!row.prochain_rdv_adefinir },
+      { key: "arelancer", label: "À relancer (crée une tâche « Relancer »)", type: "checkbox", value: !!row.arelancer },
       { key: "notes", label: "Notes", type: "textarea", value: row.notes },
     ],
     onRender: (form) => {
@@ -1577,20 +1834,41 @@ function openEvenementDialog(id, defaultDate) {
       form.elements["nb_adultes"].addEventListener("input", calc);
       form.elements["nb_enfants"].addEventListener("input", calc);
       form.elements["contact_id"].addEventListener("change", () => { const c = findContact(Number(form.elements["contact_id"].value)); if (c && c.provenance && !form.elements["provenance"].value) form.elements["provenance"].value = c.provenance; });
-      const toggleDateFin = () => { form.elements["date_fin"].closest(".field").style.display = form.elements["plusieurs_jours"].checked ? "" : "none"; };
-      form.elements["plusieurs_jours"].addEventListener("change", toggleDateFin);
-      toggleDateFin();
       calc();
+      // Bouton "Prendre RDV" à côté du champ prochain RDV
+      const rdvField = form.elements["prochain_rdv"].closest(".field");
+      const rdvBtn = document.createElement("button");
+      rdvBtn.type = "button"; rdvBtn.className = "btn secondary"; rdvBtn.style.marginTop = "6px";
+      rdvBtn.innerHTML = icon("users", 13) + " Prendre RDV directement";
+      rdvBtn.onclick = () => {
+        const contactId = Number(form.elements["contact_id"].value) || null;
+        openRdvDialog(null, { evenement_id: id || null, contact_id: contactId });
+      };
+      rdvField.appendChild(rdvBtn);
+      // Bouton "Ouvrir en grand" pour les notes, aussi accessible en édition
+      if (id) {
+        const notesField = form.elements["notes"].closest(".field");
+        const notesBtn = document.createElement("button");
+        notesBtn.type = "button"; notesBtn.className = "btn secondary"; notesBtn.style.marginBottom = "6px";
+        notesBtn.innerHTML = icon("edit", 13) + " Ouvrir en grand";
+        notesBtn.onclick = () => openNotesPanel("Notes — évènement", "evenements", id, form.elements["notes"].value, async () => {
+          const fresh = findEvenement(id);
+          form.elements["notes"].value = (fresh && fresh.notes) || "";
+        });
+        notesField.insertBefore(notesBtn, form.elements["notes"]);
+      }
     },
     beforeSave: (values) => {
-      adefinirFlag = !!values.prochain_rdv_adefinir;
-      delete values.prochain_rdv_adefinir;
-      if (!values.plusieurs_jours) values.date_fin = null;
-      delete values.plusieurs_jours;
+      adefinirFlag = !!values.prochain_rdv_adefinir && !row.prochain_rdv_adefinir;
+      arelancerFlag = !!values.arelancer && !row.arelancer;
     },
     onSaved: async (saved) => {
-      if (adefinirFlag) {
-        await insertRow("todos", { titre: "Prendre rendez-vous", evenement_id: saved.id, priorite: "Basse", statut: "À faire" });
+      if (adefinirFlag) await insertRow("todos", { titre: "Prendre rendez-vous", evenement_id: saved.id, priorite: "Basse", statut: "À faire" });
+      if (arelancerFlag) await insertRow("todos", { titre: "Relancer", evenement_id: saved.id, priorite: "Basse", statut: "À faire" });
+      // Passage automatique Prospect -> Client quand l'évènement est confirmé
+      if (saved.statut === "Confirmé" && saved.contact_id) {
+        const c = findContact(saved.contact_id);
+        if (c && c.categorie === "Prospect") await updateRow("contacts", c.id, { categorie: "Client" });
       }
       await refreshAll();
     },
@@ -1610,7 +1888,7 @@ function renderRdv() {
   const rowHtml = r => `
     <tr>
       <td>${fmtDateFR(r.date_rdv)}</td><td>${r.heure || "—"}</td><td>${r.objet || "—"}</td>
-      <td>${contactLabel(findContact(r.contact_id))}</td><td>${badge(r.statut, STATUT_COLORS[r.statut])}</td>
+      <td>${contactLabel(findContact(r.contact_id))}</td><td>${inlineStatusSelect("rdv", r.id, "statut", STATUTS_RDV, r.statut, "renderRdv")}</td>
       <td>${r.notes || "—"}</td>
       <td class="row-actions"><button onclick="openRdvDialog(${r.id})">${icon("edit",14)}</button><button onclick="confirmDelete('rdv', ${r.id}, renderRdv)">${icon("trash",14)}</button></td>
     </tr>`;
@@ -1623,8 +1901,8 @@ function renderRdv() {
   document.getElementById("rdv-tbody").innerHTML = upcoming.length ? upcoming.map(rowHtml).join("") : `<tr class="empty-row"><td colspan="7">Aucun rendez-vous à venir</td></tr>`;
   document.getElementById("rdv-past-tbody").innerHTML = past.length ? past.map(rowHtml).join("") : `<tr class="empty-row"><td colspan="7">Aucun rendez-vous passé</td></tr>`;
 }
-function openRdvDialog(id) {
-  const row = id ? cache.rdv.find(r => r.id === id) : {};
+function openRdvDialog(id, presetValues) {
+  const row = id ? cache.rdv.find(r => r.id === id) : (presetValues || {});
   openModal({
     title: id ? "Modifier le RDV" : "Nouveau RDV", table: "rdv", id,
     fields: [
@@ -1636,6 +1914,12 @@ function openRdvDialog(id) {
       { key: "statut", label: "Statut", type: "select", options: STATUTS_RDV, value: row.statut || "Prévu" },
       { key: "notes", label: "Notes", type: "textarea", value: row.notes },
     ],
+    onRender: (form) => {
+      form.elements["evenement_id"].addEventListener("change", () => {
+        const ev = findEvenement(Number(form.elements["evenement_id"].value));
+        if (ev && ev.contact_id) form.elements["contact_id"].value = ev.contact_id;
+      });
+    },
     onSaved: refreshAll,
   });
 }
@@ -1660,24 +1944,32 @@ function renderGrille() {
       <td class="row-actions"><button onclick="openGrilleDialog(${g.id})">${icon("edit",14)}</button><button onclick="confirmDelete('grille_tarifaire', ${g.id}, renderGrille)">${icon("trash",14)}</button></td>
     </tr>`).join("") : emptyState(8, "Ta grille tarifaire est vide", "Ajouter ta première prestation", "openGrilleDialog(null)");
 }
-function openGrilleDialog(id) {
-  const row = id ? findGrille(id) : {};
+function openGrilleDialog(id, dupFrom) {
+  const row = id ? findGrille(id) : (dupFrom ? { nom_presta: dupFrom.nom_presta, details: dupFrom.details, notes_internes: dupFrom.notes_internes } : {});
   openModal({
     title: id ? "Modifier la prestation" : "Nouvelle prestation", table: "grille_tarifaire", id,
     fields: [
       { key: "nom_presta", label: "Nom de la prestation", type: "text", required: true, value: row.nom_presta },
-      { key: "details", label: "Détails", type: "textarea", value: row.details },
+      { key: "details", label: "Détails (affichés dans le devis si sélectionné)", type: "textarea", value: row.details },
       { key: "saison", label: "Saison", type: "select", options: SAISONS, value: row.saison || "Toute l'année" },
       { key: "pu_ttc", label: "PU TTC (€)", type: "number", value: row.pu_ttc },
       { key: "tva", label: "TVA (%)", type: "select", options: TVA_RATES, value: row.tva != null ? row.tva : 20 },
       { key: "montant_tva", label: "Montant TVA (€) — calculé", type: "computed", value: row.montant_tva },
       { key: "pu_ht", label: "PU HT (€) — calculé", type: "computed", value: row.pu_ht },
+      { key: "notes_internes", label: "Notes internes (jamais affichées dans le devis)", type: "textarea", value: row.notes_internes },
     ],
     onRender: (form) => {
       const calc = () => { const ttc = Number(form.elements["pu_ttc"].value || 0); const tva = Number(form.elements["tva"].value || 0); const ht = round2(ttc / (1 + tva / 100)); form.elements["pu_ht"].value = ttc ? ht : ""; form.elements["montant_tva"].value = ttc ? round2(ttc - ht) : ""; };
       form.elements["pu_ttc"].addEventListener("input", calc);
       form.elements["tva"].addEventListener("change", calc);
       calc();
+      if (id) {
+        const btn = document.createElement("button");
+        btn.type = "button"; btn.className = "btn secondary"; btn.style.marginTop = "6px";
+        btn.innerHTML = icon("plus", 13) + " Dupliquer pour une autre saison";
+        btn.onclick = () => { closeModal(); openGrilleDialog(null, row); };
+        form.elements["saison"].closest(".field").appendChild(btn);
+      }
     },
     onSaved: refreshAll,
   });
@@ -1686,61 +1978,147 @@ function openGrilleDialog(id) {
 // ========================================================================
 //  COMMANDE (articles réutilisables)
 // ========================================================================
+let commandeView = "table";
 function renderCommande() {
   ensureFilterOptions("commande-filter-statut", STATUTS_COMMANDE);
   bindSearch("commande-search", renderCommande);
   const search = (document.getElementById("commande-search").value || "").toLowerCase();
   const filter = document.getElementById("commande-filter-statut").value;
-  let rows = [...cache.commandes];
+  let rows = [...cache.commandes].sort((a, b) => (a.date_commande || "9999").localeCompare(b.date_commande || "9999"));
   if (filter) rows = rows.filter(c => c.statut === filter);
-  if (search) rows = rows.filter(c => ((c.article || "") + " " + (c.fournisseur || "") + " " + (c.categorie || "")).toLowerCase().includes(search));
+  if (search) rows = rows.filter(c => {
+    const artText = (c.lignes || []).map(l => l.article).join(" ") + " " + (c.article || "");
+    const fourn = c.fournisseur_contact_id ? contactLabel(findContact(c.fournisseur_contact_id)) : (c.fournisseur || "");
+    return (artText + " " + fourn).toLowerCase().includes(search);
+  });
 
-  // datalists réutilisables (articles + fournisseurs déjà saisis)
-  const arts = [...new Set(cache.commandes.map(c => c.article).filter(Boolean))];
-  const fours = [...new Set(cache.commandes.map(c => c.fournisseur).filter(Boolean))];
-  document.getElementById("commande-articles").innerHTML = arts.map(a => `<option value="${a.replace(/"/g, "&quot;")}">`).join("");
-  document.getElementById("commande-fournisseurs").innerHTML = fours.map(a => `<option value="${a.replace(/"/g, "&quot;")}">`).join("");
+  document.getElementById("commande-view-select").value = commandeView;
+  document.getElementById("commande-table-view").style.display = commandeView === "table" ? "block" : "none";
+  document.getElementById("commande-kanban").style.display = commandeView === "kanban" ? "flex" : "none";
+  if (commandeView === "kanban") { renderCommandeKanban(rows); return; }
 
   const tbody = document.getElementById("commande-tbody");
   tbody.innerHTML = rows.length ? rows.map(c => {
     const e = c.evenement_id ? findEvenement(c.evenement_id) : null;
+    const lignes = Array.isArray(c.lignes) && c.lignes.length ? c.lignes : (c.article ? [{ article: c.article, quantite: c.quantite }] : []);
+    const articlesTxt = lignes.length ? lignes.map(l => `${l.article}${l.quantite ? " (" + l.quantite + ")" : ""}`).join(", ") : "—";
+    const fournisseurTxt = c.fournisseur_contact_id ? contactLabel(findContact(c.fournisseur_contact_id)) : (c.fournisseur || "—");
     return `<tr>
-      <td>${c.article || "—"}</td><td>${c.quantite != null ? c.quantite : "—"}</td>
-      <td>${c.fournisseur || "—"}</td>
+      <td>${articlesTxt}</td>
+      <td>${fournisseurTxt}</td>
       <td>${e ? eventLabel(e) : "—"}</td>
       <td>${e ? eventDateLabel(e) : "—"}</td>
       <td>${fmtDateFR(c.date_commande) || "—"}</td>
-      <td>${badge(c.statut, STATUT_COLORS[c.statut])}</td><td>${c.notes || "—"}</td>
+      <td>${inlineStatusSelect("commandes", c.id, "statut", STATUTS_COMMANDE, c.statut, "renderCommande")}</td>
       <td class="row-actions"><button onclick="openCommandeDialog(${c.id})">${icon("edit",14)}</button><button onclick="confirmDelete('commandes', ${c.id}, renderCommande)">${icon("trash",14)}</button></td>
     </tr>`;
-  }).join("") : emptyState(9, "Aucune commande pour l'instant", "Ajouter ta première commande", "openCommandeDialog(null)");
+  }).join("") : emptyState(7, "Aucune commande pour l'instant", "Ajouter ta première commande", "openCommandeDialog(null)");
 }
+
+function renderCommandeKanban(rows) {
+  const board = document.getElementById("commande-kanban");
+  board.innerHTML = STATUTS_COMMANDE.map(statut => {
+    const items = rows.filter(c => c.statut === statut);
+    const cards = items.map(c => {
+      const lignes = Array.isArray(c.lignes) && c.lignes.length ? c.lignes : (c.article ? [{ article: c.article }] : []);
+      const artTxt = lignes.length ? lignes.map(l => l.article).join(", ") : "—";
+      const fournisseurTxt = c.fournisseur_contact_id ? contactLabel(findContact(c.fournisseur_contact_id)) : (c.fournisseur || "");
+      return `<div class="kanban-card" draggable="true" data-id="${c.id}" onclick="openCommandeDialog(${c.id})">
+        <div class="kc-name">${artTxt}</div>
+        <div class="kc-date">${fmtDateFR(c.date_commande) || "—"}${fournisseurTxt ? " · " + fournisseurTxt : ""}</div>
+      </div>`;
+    }).join("");
+    return `<div class="kanban-col" data-statut="${statut}"><h4>${statut} <span>${items.length}</span></h4>${cards}</div>`;
+  }).join("");
+
+  board.querySelectorAll(".kanban-card").forEach(card => {
+    card.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/plain", card.dataset.id); e.dataTransfer.effectAllowed = "move"; });
+  });
+  board.querySelectorAll(".kanban-col").forEach(col => {
+    col.addEventListener("dragover", (e) => { e.preventDefault(); col.classList.add("drag-over"); });
+    col.addEventListener("dragleave", () => col.classList.remove("drag-over"));
+    col.addEventListener("drop", async (e) => {
+      e.preventDefault(); col.classList.remove("drag-over");
+      const id = Number(e.dataTransfer.getData("text/plain"));
+      const newStatut = col.dataset.statut;
+      const c = cache.commandes.find(x => x.id === id);
+      if (!c || c.statut === newStatut) return;
+      const saved = await updateRow("commandes", id, { statut: newStatut });
+      if (saved) { showToast("Statut mis à jour : " + newStatut); await refreshCache(); renderCommande(); }
+    });
+  });
+}
+
+let commandeLignesState = [];
+const BLANK_COMMANDE_LIGNE = () => ({ article: "", quantite: 1 });
+
 function openCommandeDialog(id) {
   const row = id ? cache.commandes.find(c => c.id === id) : {};
-  openModal({
-    title: id ? "Modifier la commande" : "Nouvelle commande", table: "commandes", id,
-    fields: [
-      { key: "article", label: "Article", type: "text", required: true, value: row.article, list: "commande-articles" },
-      { key: "quantite", label: "Quantité", type: "number", value: row.quantite },
-      { key: "fournisseur", label: "Fournisseur", type: "text", value: row.fournisseur, list: "commande-fournisseurs" },
-      { key: "categorie", label: "Catégorie", type: "text", value: row.categorie },
-      { key: "evenement_id", label: "Évènement lié (facultatif)", type: "select-raw", optionsHtml: `<option value="">— Aucun —</option>` + evenementOptionsHtml(row.evenement_id), value: row.evenement_id, numeric: true },
-      { key: "date_commande", label: "Date de commande", type: "date", value: row.date_commande },
-      { key: "statut", label: "Statut", type: "select", options: STATUTS_COMMANDE, value: row.statut || "À commander" },
-      { key: "notes", label: "Description", type: "textarea", value: row.notes },
-    ],
-    onSaved: async (saved) => {
-      if (saved.date_commande) {
-        const existing = cache.todos.find(t => t.commande_id === saved.id && t.titre === "Passer commande");
-        if (existing) {
-          if (existing.date_echeance !== saved.date_commande) await updateRow("todos", existing.id, { date_echeance: saved.date_commande });
-        } else {
-          await insertRow("todos", { titre: "Passer commande", description: saved.article ? "Article : " + saved.article : null, commande_id: saved.id, date_echeance: saved.date_commande, statut: "À faire", priorite: "Normale" });
-        }
-      }
-      await refreshAll();
-    },
-  });
+  commandeLignesState = Array.isArray(row.lignes) && row.lignes.length ? JSON.parse(JSON.stringify(row.lignes)) : (row.article ? [{ article: row.article, quantite: row.quantite }] : [BLANK_COMMANDE_LIGNE()]);
+
+  const html = `
+    <div class="field"><label>Évènement lié (facultatif)</label>
+      <select name="evenement_id">${`<option value="">— Aucun —</option>` + evenementOptionsHtml(row.evenement_id)}</select>
+    </div>
+    <div class="field"><label>Date de commande</label><input type="date" name="date_commande" value="${row.date_commande || ""}"></div>
+    <div class="field"><label>Statut</label>
+      <select name="statut">${STATUTS_COMMANDE.map(s => `<option value="${s}" ${s === (row.statut || "À commander") ? "selected" : ""}>${s}</option>`).join("")}</select>
+    </div>
+    <div class="field"><label>Articles</label>
+      <div id="commande-lignes-list"></div>
+      <button type="button" class="btn secondary" id="commande-add-ligne">${icon("plus",13)} Ajouter une ligne</button>
+    </div>
+    <div class="field"><label>Fournisseur (facultatif, parmi tes contacts)</label>
+      <select name="fournisseur_contact_id">${`<option value="">— Aucun —</option>` + contactOptionsHtml(row.fournisseur_contact_id, ["Fournisseur"])}</select>
+    </div>`;
+
+  openRawModal(id ? "Modifier la commande" : "Nouvelle commande", html, () => saveCommandeDialog(id, row));
+  document.getElementById("modal-delete").style.display = id ? "inline-block" : "none";
+  if (id) document.getElementById("modal-delete").onclick = () => { closeModal(); confirmDelete("commandes", id, renderCommande); };
+
+  renderCommandeLignes();
+  document.getElementById("commande-add-ligne").addEventListener("click", () => { commandeLignesState.push(BLANK_COMMANDE_LIGNE()); renderCommandeLignes(); });
+}
+function renderCommandeLignes() {
+  const c = document.getElementById("commande-lignes-list");
+  c.innerHTML = commandeLignesState.map((l, i) => `
+    <div style="display:flex;gap:8px;margin-bottom:6px;align-items:center;">
+      <input data-ci="${i}" data-ck="article" placeholder="Article" value="${escapeAttr(l.article || "")}" style="flex:1;padding:7px 8px;border:1px solid var(--border);border-radius:5px;">
+      <input type="number" data-ci="${i}" data-ck="quantite" placeholder="Qté" value="${l.quantite != null ? l.quantite : ""}" style="width:70px;padding:7px 8px;border:1px solid var(--border);border-radius:5px;">
+      <button type="button" onclick="removeCommandeLigne(${i})" style="background:none;border:none;color:var(--danger);font-size:14px;">${icon("x",13)}</button>
+    </div>`).join("");
+  c.querySelectorAll("[data-ci]").forEach(el => el.addEventListener("input", (e) => {
+    const i = Number(e.target.dataset.ci), k = e.target.dataset.ck;
+    commandeLignesState[i][k] = k === "quantite" ? (e.target.value === "" ? "" : Number(e.target.value)) : e.target.value;
+  }));
+}
+function removeCommandeLigne(i) {
+  commandeLignesState.splice(i, 1);
+  if (!commandeLignesState.length) commandeLignesState.push(BLANK_COMMANDE_LIGNE());
+  renderCommandeLignes();
+}
+async function saveCommandeDialog(id, row) {
+  const form = document.getElementById("modal-form");
+  const lignes = commandeLignesState.filter(l => l.article);
+  const values = {
+    evenement_id: Number(form.elements["evenement_id"].value) || null,
+    date_commande: form.elements["date_commande"].value || null,
+    statut: form.elements["statut"].value,
+    fournisseur_contact_id: Number(form.elements["fournisseur_contact_id"].value) || null,
+    lignes,
+    article: lignes[0] ? lignes[0].article : null,
+    quantite: lignes[0] ? lignes[0].quantite : null,
+  };
+  const saved = id ? await updateRow("commandes", id, values) : await insertRow("commandes", values);
+  if (!saved) return;
+  if (saved.date_commande) {
+    const existing = cache.todos.find(t => t.commande_id === saved.id && t.titre === "Passer commande");
+    if (existing) { if (existing.date_echeance !== saved.date_commande) await updateRow("todos", existing.id, { date_echeance: saved.date_commande }); }
+    else await insertRow("todos", { titre: "Passer commande", description: lignes.length ? "Articles : " + lignes.map(l => l.article).join(", ") : null, commande_id: saved.id, date_echeance: saved.date_commande, statut: "À faire", priorite: "Normale" });
+  }
+  showToast(id ? "Commande mise à jour" : "Commande ajoutée");
+  closeModal();
+  await refreshAll();
 }
 
 // ========================================================================
@@ -1791,10 +2169,20 @@ function renderCalendrierMonth() {
   const { year, month } = calState;
   document.getElementById("cal-month-lbl").textContent = `${MOIS_FR[month - 1]} ${year}`;
   const eventsByDay = {};
+  const monthPrefix = `${year}-${String(month).padStart(2, "0")}`;
   cache.evenements.forEach(e => {
-    if (!e.date_evenement) return;
-    const [y, m, d] = e.date_evenement.split("-").map(Number);
-    if (y === year && m === month) (eventsByDay[d] = eventsByDay[d] || []).push(e);
+    if (e.date_flexible || !e.date_evenement) return;
+    const start = e.date_evenement, end = e.date_fin || e.date_evenement;
+    let cursor = start;
+    let guard = 0;
+    while (cursor <= end && guard < 62) {
+      if (cursor.startsWith(monthPrefix)) {
+        const d = Number(cursor.slice(8, 10));
+        (eventsByDay[d] = eventsByDay[d] || []).push(e);
+      }
+      cursor = addDaysISO(cursor, 1);
+      guard++;
+    }
   });
   const firstDow = (new Date(year, month - 1, 1).getDay() + 6) % 7;
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -1802,17 +2190,32 @@ function renderCalendrierMonth() {
   let html = DOW_FR.map(d => `<div class="cal-dow">${d}</div>`).join("");
   for (let i = 0; i < firstDow; i++) html += `<div class="cal-cell empty"></div>`;
   for (let day = 1; day <= daysInMonth; day++) {
-    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const iso = `${monthPrefix}-${String(day).padStart(2, "0")}`;
     const isToday = iso === todayIso, isSelected = iso === calState.selected;
     const dayEvents = eventsByDay[day] || [];
     const dots = dayEvents.slice(0, 6).map(e => `<span style="background:${eventTypeColor(e)};"></span>`).join("");
-    html += `<div class="cal-cell ${isToday ? "today" : ""} ${isSelected ? "selected" : ""}" onclick="selectCalDay('${iso}')"><div>${day}</div>${dots ? `<div class="evt-dots">${dots}</div>` : ""}</div>`;
+    const hasUnconfirmed = dayEvents.some(e => !["Confirmé", "Passé", "Annulé"].includes(e.statut));
+    html += `<div class="cal-cell ${isToday ? "today" : ""} ${isSelected ? "selected" : ""}" onclick="selectCalDay('${iso}')"><div>${day}${hasUnconfirmed ? ' <span style="opacity:.7;">?</span>' : ""}</div>${dots ? `<div class="evt-dots">${dots}</div>` : ""}</div>`;
   }
   document.getElementById("cal-grid").innerHTML = html;
-  if (!calState.selected || !calState.selected.startsWith(`${year}-${String(month).padStart(2, "0")}`)) {
+  if (!calState.selected || !calState.selected.startsWith(monthPrefix)) {
     calState.selected = (month === new Date().getMonth() + 1 && year === new Date().getFullYear()) ? todayIso : null;
   }
   renderCalDay();
+
+  // Évènements à date flexible ce mois, listés en bas de page
+  const flexEvents = cache.evenements.filter(e => e.date_flexible && (e.mois_seul || "").startsWith(monthPrefix));
+  let flexWrap = document.getElementById("cal-flex-wrap");
+  if (!flexWrap) {
+    flexWrap = document.createElement("div");
+    flexWrap.id = "cal-flex-wrap";
+    flexWrap.className = "panel";
+    flexWrap.style.marginTop = "16px";
+    document.getElementById("cal-legend").insertAdjacentElement("afterend", flexWrap);
+  }
+  flexWrap.innerHTML = flexEvents.length
+    ? `<h3 style="font-size:13px;margin:0 0 10px;">Dates flexibles ce mois-ci</h3>` + flexEvents.map(e => `<div style="padding:6px 0;border-top:1px solid var(--border);font-size:13px;cursor:pointer;" onclick="openEventRecap(${e.id})">${contactLabel(findContact(e.contact_id))} — ${e.type_evenement || "Évènement"}</div>`).join("")
+    : "";
 }
 function selectCalDay(iso) { calState.selected = iso; renderCalendrier(); }
 function renderCalDay() {
@@ -1848,7 +2251,7 @@ const BLANK_PREST_LIGNE = () => ({ titre: "", description: "", type_prix: "Exact
 function renderPrestataire() {
   ensureFilterOptions("prestataire-filter-type", TYPES_PRESTATAIRE);
   const filter = document.getElementById("prestataire-filter-type").value;
-  let rows = [...cache.prestataires];
+  let rows = [...cache.prestataires].sort((a, b) => contactLabel(findContact(a.contact_id)).localeCompare(contactLabel(findContact(b.contact_id)), "fr"));
   if (filter) rows = rows.filter(p => p.type_prestataire === filter);
   const tbody = document.getElementById("prestataire-tbody");
   tbody.innerHTML = rows.length ? rows.map(p => {
@@ -1874,7 +2277,7 @@ function openPrestataireDialog(id) {
 
   const html = `
     <div class="field"><label>Contact lié</label>
-      <select id="prest-contact"><option value="">— Sélectionner —</option>${contactOptionsHtml(row.contact_id)}</select>
+      <select id="prest-contact"><option value="">— Sélectionner —</option>${contactOptionsHtml(row.contact_id, ["Prestataire"])}</select>
     </div>
     <div id="prest-contact-info" style="font-size:12.5px;color:var(--muted);margin:-6px 0 12px;"></div>
     <div class="field"><label>Type de prestataire</label>
@@ -1887,7 +2290,8 @@ function openPrestataireDialog(id) {
     <div class="field"><label>Prestations</label>
       <div id="prest-lignes"></div>
       <button type="button" class="btn secondary" id="prest-add-ligne">${icon("plus",13)} Ajouter une prestation</button>
-    </div>`;
+    </div>
+    <div class="field"><label>Notes</label><textarea id="prest-notes">${row.notes || ""}</textarea></div>`;
 
   openRawModal(id ? "Modifier la fiche prestataire" : "Nouvelle fiche prestataire", html, savePrestataire);
   document.getElementById("modal-delete").style.display = id ? "inline-block" : "none";
@@ -1919,12 +2323,13 @@ function renderPrestLignes() {
         <select data-pi="${i}" data-pk="type_prix" style="padding:6px 8px;border:1px solid var(--border);border-radius:5px;">
           <option value="Exact" ${l.type_prix === "Exact" ? "selected" : ""}>Prix exact</option>
           <option value="Fourchette" ${l.type_prix === "Fourchette" ? "selected" : ""}>Fourchette de prix</option>
+          <option value="A_partir_de" ${l.type_prix === "A_partir_de" ? "selected" : ""}>À partir de</option>
         </select>
         ${l.type_prix === "Fourchette" ? `
           <input type="number" data-pi="${i}" data-pk="prix_min" placeholder="Min €" value="${l.prix_min != null ? l.prix_min : ""}" style="width:90px;padding:6px 8px;border:1px solid var(--border);border-radius:5px;">
           <input type="number" data-pi="${i}" data-pk="prix_max" placeholder="Max €" value="${l.prix_max != null ? l.prix_max : ""}" style="width:90px;padding:6px 8px;border:1px solid var(--border);border-radius:5px;">
         ` : `
-          <input type="number" data-pi="${i}" data-pk="prix_exact" placeholder="Prix €" value="${l.prix_exact != null ? l.prix_exact : ""}" style="width:100px;padding:6px 8px;border:1px solid var(--border);border-radius:5px;">
+          <input type="number" data-pi="${i}" data-pk="prix_exact" placeholder="${l.type_prix === "A_partir_de" ? "À partir de €" : "Prix €"}" value="${l.prix_exact != null ? l.prix_exact : ""}" style="width:120px;padding:6px 8px;border:1px solid var(--border);border-radius:5px;">
         `}
       </div>
     </div>`).join("");
@@ -1944,7 +2349,7 @@ async function savePrestataire() {
   const contact_id = Number(document.getElementById("prest-contact").value) || null;
   const type_prestataire = document.getElementById("prest-type").value;
   const fileEl = document.getElementById("prest-pdf");
-  const values = { contact_id, type_prestataire, prestations: prestState.lignes.filter(l => l.titre) };
+  const values = { contact_id, type_prestataire, prestations: prestState.lignes.filter(l => l.titre), notes: document.getElementById("prest-notes").value || null };
   let saved = prestState.id ? await updateRow("prestataires", prestState.id, values) : await insertRow("prestataires", values);
   if (!saved) return;
   if (fileEl && fileEl.files && fileEl.files[0]) {
@@ -1964,7 +2369,9 @@ function openPrestataireRecap(id) {
   const c = findContact(p.contact_id);
   const line = (l, v) => `<tr><td style="color:var(--muted);width:42%;">${l}</td><td>${v || "—"}</td></tr>`;
   const prestHtml = (p.prestations || []).length ? p.prestations.map(pr => {
-    const prix = pr.type_prix === "Fourchette" ? `${pr.prix_min ?? "?"} € – ${pr.prix_max ?? "?"} €` : (pr.prix_exact != null && pr.prix_exact !== "" ? pr.prix_exact + " €" : "—");
+    const prix = pr.type_prix === "Fourchette" ? `${pr.prix_min ?? "?"} € – ${pr.prix_max ?? "?"} €`
+      : pr.type_prix === "A_partir_de" ? (pr.prix_exact != null && pr.prix_exact !== "" ? "À partir de " + pr.prix_exact + " €" : "—")
+      : (pr.prix_exact != null && pr.prix_exact !== "" ? pr.prix_exact + " €" : "—");
     return `<tr><td>${pr.titre || "—"}</td><td>${pr.description || "—"}</td><td>${prix}</td></tr>`;
   }).join("") : `<tr class="empty-row"><td colspan="3">Aucune prestation renseignée</td></tr>`;
   const html = `
@@ -1980,7 +2387,8 @@ function openPrestataireRecap(id) {
     </tbody></table>
     <h3 style="font-size:14px;margin:0 0 8px;">${icon("mic",14)} Prestations</h3>
     <table class="data" style="margin-bottom:16px;"><thead><tr><th>Titre</th><th>Description</th><th>Prix</th></tr></thead><tbody>${prestHtml}</tbody></table>
-    ${p.pdf_path ? `<button class="btn secondary" type="button" onclick="downloadAttachment('${p.pdf_path}')">${icon("paperclip",14)} Voir la fiche de présentation</button>` : ""}`;
+    ${p.notes ? `<h3 style="font-size:14px;margin:16px 0 8px;">${icon("edit",14)} Notes</h3><div style="font-size:13.5px;white-space:pre-wrap;background:#FAFAF8;border:1px solid var(--border);border-radius:8px;padding:12px;">${p.notes}</div>` : ""}
+    ${p.pdf_path ? `<button class="btn secondary" type="button" onclick="downloadAttachment('${p.pdf_path}')" style="margin-top:12px;">${icon("paperclip",14)} Voir la fiche de présentation</button>` : ""}`;
   showInfoModal("Fiche récap prestataire", html);
 }
 
@@ -2086,6 +2494,96 @@ function exportNotePDF(id) {
 }
 
 // ---- Gestion des catégories de notes ----
+function openTypesFactureManager() {
+  const html = `<p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;">L'échéance correspond au nombre de jours/mois <strong>avant la date de l'évènement</strong>.</p>
+    <div id="tf-mgr-list">${renderTypesFactureRows()}</div>
+    <h4 style="font-size:12.5px;margin:16px 0 8px;">Nouveau type</h4>
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;align-items:center;">
+      <input id="tf-new-designation" placeholder="Désignation (ex : Facture 1er acompte)" style="padding:7px 8px;border:1px solid var(--border);border-radius:5px;">
+      <input id="tf-new-pourcentage" type="number" placeholder="%" style="padding:7px 8px;border:1px solid var(--border);border-radius:5px;">
+      <input id="tf-new-echeance-nb" type="number" placeholder="Nombre" style="padding:7px 8px;border:1px solid var(--border);border-radius:5px;">
+      <select id="tf-new-echeance-unite" style="padding:7px 8px;border:1px solid var(--border);border-radius:5px;">
+        <option value="jours">Jours avant</option>
+        <option value="mois">Mois avant</option>
+      </select>
+    </div>
+    <button type="button" class="btn secondary" id="tf-add-btn" style="margin-top:10px;">${icon("plus", 13)} Ajouter ce type</button>`;
+  showInfoModal("Types de facture", html);
+  document.getElementById("tf-add-btn").addEventListener("click", addTypeFacture);
+}
+function renderTypesFactureRows() {
+  if (!cache.types_facture.length) return `<p style="color:var(--muted);font-size:13px;">Aucun type pour l'instant — "Solde" et "Facture manuelle" sont toujours disponibles par défaut.</p>`;
+  return `<table class="data"><tbody>${cache.types_facture.map(t => `
+    <tr>
+      <td>${t.designation}</td>
+      <td>${t.pourcentage != null ? t.pourcentage + " %" : "—"}</td>
+      <td>${t.echeance_nombre != null ? t.echeance_nombre + " " + (t.echeance_unite || "jours") + " avant" : "—"}</td>
+      <td class="row-actions"><button title="Supprimer" onclick="deleteTypeFacture(${t.id})">${icon("trash",13)}</button></td>
+    </tr>`).join("")}</tbody></table>`;
+}
+async function addTypeFacture() {
+  const designation = document.getElementById("tf-new-designation").value.trim();
+  if (!designation) { showToast("La désignation est obligatoire"); return; }
+  const values = {
+    designation,
+    pourcentage: Number(document.getElementById("tf-new-pourcentage").value) || null,
+    echeance_nombre: Number(document.getElementById("tf-new-echeance-nb").value) || null,
+    echeance_unite: document.getElementById("tf-new-echeance-unite").value,
+  };
+  const saved = await insertRow("types_facture", values);
+  if (saved) { await refreshCache(); document.getElementById("tf-mgr-list").innerHTML = renderTypesFactureRows(); document.getElementById("tf-new-designation").value = ""; document.getElementById("tf-new-pourcentage").value = ""; document.getElementById("tf-new-echeance-nb").value = ""; showToast("Type ajouté"); }
+}
+async function deleteTypeFacture(id) {
+  if (!confirm("Supprimer ce type de facture ?")) return;
+  await deleteRow("types_facture", id);
+  await refreshCache();
+  document.getElementById("tf-mgr-list").innerHTML = renderTypesFactureRows();
+}
+
+function openCgvManager() {
+  const html = `<div id="cgv-mgr-list">${renderCgvMgrRows()}</div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <input id="new-cgv-input" placeholder="Nouvelle condition…" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
+      <button type="button" class="btn secondary" id="new-cgv-btn">${icon("plus", 13)} Ajouter</button>
+    </div>`;
+  showInfoModal("Conditions générales de vente — gestion", html);
+  document.getElementById("new-cgv-btn").addEventListener("click", addCgvOption);
+}
+function renderCgvMgrRows() {
+  const list = cache.cgv_options.length ? cache.cgv_options : CGV_OPTIONS_DEFAUT.map((t, i) => ({ id: null, texte: t, ordre: i }));
+  if (!list.length) return `<p style="color:var(--muted);font-size:13px;">Aucune condition pour l'instant.</p>`;
+  return `<table class="data"><tbody>${list.map(c => `
+    <tr>
+      <td><textarea data-cgv-id="${c.id || ""}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:5px;min-height:44px;">${c.texte}</textarea></td>
+      <td class="row-actions" style="width:90px;">
+        ${c.id ? `<button title="Enregistrer" onclick="renameCgvOption(${c.id})">${icon("edit",13)}</button><button title="Supprimer" onclick="deleteCgvOption(${c.id})">${icon("trash",13)}</button>` : `<span style="font-size:11px;color:var(--muted);">Par défaut</span>`}
+      </td>
+    </tr>`).join("")}</tbody></table>`;
+}
+async function addCgvOption() {
+  const input = document.getElementById("new-cgv-input");
+  const texte = input.value.trim();
+  if (!texte) return;
+  const ordre = cache.cgv_options.length;
+  const saved = await insertRow("cgv_options", { texte, ordre });
+  if (saved) { await refreshCache(); input.value = ""; document.getElementById("cgv-mgr-list").innerHTML = renderCgvMgrRows(); }
+}
+async function renameCgvOption(id) {
+  const textarea = document.querySelector(`[data-cgv-id="${id}"]`);
+  const texte = textarea.value.trim();
+  if (!texte) return;
+  await updateRow("cgv_options", id, { texte });
+  await refreshCache();
+  showToast("Condition mise à jour");
+}
+async function deleteCgvOption(id) {
+  if (!confirm("Supprimer cette condition ?")) return;
+  await deleteRow("cgv_options", id);
+  await refreshCache();
+  document.getElementById("cgv-mgr-list").innerHTML = renderCgvMgrRows();
+  showToast("Condition supprimée");
+}
+
 function openNoteCategoriesModal() {
   const html = `<div id="note-cat-list">${renderNoteCategoriesRows()}</div>
     <div style="display:flex;gap:8px;margin-top:12px;">
@@ -2334,6 +2832,8 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("menu-toggle-btn").addEventListener("click", openMobileMenu);
   document.getElementById("sidebar-overlay").addEventListener("click", closeMobileMenu);
   document.getElementById("global-search-btn").addEventListener("click", openGlobalSearch);
+  document.getElementById("pdf-preview-close").addEventListener("click", closePdfPreview);
+  document.getElementById("pdf-preview-overlay").addEventListener("click", (e) => { if (e.target.id === "pdf-preview-overlay") closePdfPreview(); });
   document.getElementById("notif-bell-btn").addEventListener("click", (e) => { e.stopPropagation(); toggleNotifPanel(); });
   document.getElementById("notif-enable-btn").addEventListener("click", (e) => { e.stopPropagation(); enableBrowserNotifications(); });
   document.getElementById("notif-panel").addEventListener("click", (e) => e.stopPropagation());
@@ -2380,15 +2880,19 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-new-prospect").addEventListener("click", () => openEvenementDialog(null));
   document.getElementById("prospect-view-select").addEventListener("change", (e) => { prospectView = e.target.value; renderSuivi(); });
   document.getElementById("btn-new-devis").addEventListener("click", () => openDevisDialog(null));
+  document.getElementById("btn-manage-cgv").addEventListener("click", openCgvManager);
   document.getElementById("btn-export-devis-csv").addEventListener("click", exportDevisCSV);
   document.getElementById("btn-new-facture").addEventListener("click", () => openFactureDialog(null));
   document.getElementById("btn-export-factures-csv").addEventListener("click", exportFacturesCSV);
+  document.getElementById("btn-manage-types-facture").addEventListener("click", openTypesFactureManager);
   document.getElementById("btn-new-contact").addEventListener("click", () => openContactDialog(null));
   document.getElementById("contact-view-select").addEventListener("change", (e) => { contactView = e.target.value; renderContacts(); });
   document.getElementById("btn-new-evenement").addEventListener("click", () => openEvenementDialog(null));
+  document.getElementById("btn-evenement-past-more").addEventListener("click", () => { evenementPastShowAll = true; renderEvenements(); });
   document.getElementById("btn-new-rdv").addEventListener("click", () => openRdvDialog(null));
   document.getElementById("btn-new-grille").addEventListener("click", () => openGrilleDialog(null));
   document.getElementById("btn-new-commande").addEventListener("click", () => openCommandeDialog(null));
+  document.getElementById("commande-view-select").addEventListener("change", (e) => { commandeView = e.target.value; renderCommande(); });
   document.getElementById("btn-new-prestataire").addEventListener("click", () => openPrestataireDialog(null));
   document.getElementById("btn-new-note").addEventListener("click", () => openNoteEditor(null));
   document.getElementById("btn-note-categories").addEventListener("click", openNoteCategoriesModal);

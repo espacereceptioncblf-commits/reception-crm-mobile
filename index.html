@@ -154,6 +154,13 @@
   .gsearch-item .gi-icon{color:var(--accent);flex-shrink:0;}
   .gsearch-item .gi-sub{color:var(--muted);font-size:11.5px;}
   .gsearch-empty{padding:26px;text-align:center;color:var(--muted);font-size:13px;}
+
+  .pdf-preview-overlay{display:none;position:fixed;inset:0;background:rgba(20,20,20,.6);z-index:98;align-items:center;justify-content:center;padding:20px;}
+  .pdf-preview-overlay.open{display:flex;}
+  .pdf-preview-box{background:var(--card);width:100%;max-width:900px;height:90vh;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;}
+  .pdf-preview-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);}
+  .pdf-preview-head button{background:none;border:none;color:var(--muted);}
+  #pdf-preview-iframe{flex:1;border:none;width:100%;background:#525659;}
   .due-today{color:var(--danger);font-weight:bold;}
 
   /* modal */
@@ -319,11 +326,13 @@
       <div class="nav-section-label">Pilotage</div>
       <div class="nav-item" data-page="dashboard"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><path d="M9 22V12h6v10"/></svg><span>Dashboard</span></div>
       <div class="nav-item" data-page="todo"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>To Do List / RDV</span></div>
+      <div class="nav-item" data-page="calendrier"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg><span>Calendrier</span></div>
 
       <div class="nav-section-label">Clients</div>
       <div class="nav-item" data-page="prospects"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg><span>Suivi Clients</span></div>
       <div class="nav-item" data-page="evenements"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>Évènements</span></div>
       <div class="nav-item" data-page="contacts"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>Contacts</span></div>
+      <div class="nav-item" data-page="mail"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z" opacity="0"/><path d="M22 6l-10 7L2 6"/><rect x="2" y="4" width="20" height="16" rx="2"/></svg><span>Mail</span></div>
 
       <div class="nav-section-label">Ventes</div>
       <div class="nav-item" data-page="devis"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span>Devis</span></div>
@@ -331,7 +340,6 @@
       <div class="nav-item" data-page="tarification"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L11 3.83A2 2 0 0 0 9.59 3H4a1 1 0 0 0-1 1v5.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.82 0l4.6-4.6a2 2 0 0 0 0-2.82z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg><span>Tarification</span></div>
 
       <div class="nav-section-label">Organisation</div>
-      <div class="nav-item" data-page="calendrier"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg><span>Calendrier</span></div>
       <div class="nav-item" data-page="commande"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><span>Commande</span></div>
       <div class="nav-item" data-page="prestataire"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg><span>Prestataire</span></div>
       <div class="nav-item" data-page="notes"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>Notes</span></div>
@@ -401,6 +409,7 @@
         <!-- TODO -->
         <div class="page" id="page-todo">
           <div class="page-title">To Do List / RDV</div>
+          <div class="panel">
           <div class="page-toolbar">
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
               <select class="filter" id="todo-filter-statut"><option value="">Tous les statuts</option></select>
@@ -414,6 +423,7 @@
             <thead><tr><th>Titre</th><th>Lié à</th><th>Priorité</th><th>Échéance</th><th>Statut</th><th></th></tr></thead>
             <tbody id="todo-tbody"></tbody>
           </table></div>
+          </div>
 
           <div class="panel" style="margin-top:26px;">
             <div class="page-toolbar" style="margin-bottom:10px;">
@@ -461,7 +471,7 @@
           </div>
           <div class="page-note">Suivi de tous les dossiers (prospects et clients). Un clic sur <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg> ouvre la fiche récap de l'évènement. En vue Kanban, glisse une carte vers une autre colonne pour changer son statut.</div>
           <div class="table-scroll"><table class="data" id="prospect-table-view">
-            <thead><tr><th>Contact</th><th>Date</th><th>Dernière action</th><th>Tâche liée</th><th>Récap</th><th>Statut évt</th><th>Devis</th><th>Facture</th><th></th></tr></thead>
+            <thead><tr><th>Contact</th><th>Date</th><th>Tâche liée / RDV</th><th>Récap</th><th>Statut évt</th><th>Devis</th><th>Facture</th><th>Suivi paiement</th><th></th></tr></thead>
             <tbody id="prospect-tbody"></tbody>
           </table></div>
           <div id="prospect-kanban" class="kanban-board" style="display:none;"></div>
@@ -499,6 +509,7 @@
               <select class="filter" id="devis-filter-statut"><option value="">Tous les statuts</option></select>
             </div>
             <button class="btn secondary" id="btn-export-devis-csv"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export CSV</button>
+            <button class="btn secondary" id="btn-manage-cgv">CGV</button>
             <button class="btn" id="btn-new-devis"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouveau devis</button>
           </div>
           <div class="table-scroll"><table class="data">
@@ -516,6 +527,7 @@
               <select class="filter" id="facture-filter-statut"><option value="">Tous les statuts</option></select>
             </div>
             <button class="btn secondary" id="btn-export-factures-csv"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export CSV</button>
+            <button class="btn secondary" id="btn-manage-types-facture">Type facture</button>
             <button class="btn" id="btn-new-facture"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouvelle facture</button>
           </div>
           <div class="table-scroll"><table class="data">
@@ -537,9 +549,20 @@
             <button class="btn" id="btn-new-evenement"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouvel évènement</button>
           </div>
           <div class="table-scroll"><table class="data">
-            <thead><tr><th>Date</th><th>Contact</th><th>Provenance</th><th>Type</th><th>Prestation</th><th>Invités</th><th>Statut</th><th>Devis</th><th>Facture</th><th>Dernière action</th><th></th></tr></thead>
+            <thead><tr><th>Date</th><th>Contact</th><th>Provenance</th><th>Type</th><th>Prestation</th><th>Invités</th><th>Statut</th><th>Devis</th><th>Facture</th><th></th></tr></thead>
             <tbody id="evenement-tbody"></tbody>
           </table></div>
+
+          <div class="panel" style="margin-top:20px;">
+            <h3><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Évènements passés</h3>
+            <div class="table-scroll"><table class="data">
+              <thead><tr><th>Date</th><th>Contact</th><th>Type</th><th>Statut</th><th></th></tr></thead>
+              <tbody id="evenement-past-tbody"></tbody>
+            </table></div>
+            <div style="text-align:center;margin-top:10px;" id="evenement-past-more-wrap">
+              <button class="btn secondary" id="btn-evenement-past-more">Voir plus</button>
+            </div>
+          </div>
         </div>
 
         <!-- CALENDRIER -->
@@ -592,16 +615,19 @@
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
               <input class="filter" id="commande-search" placeholder="Rechercher une commande…">
               <select class="filter" id="commande-filter-statut"><option value="">Tous les statuts</option></select>
+              <select class="filter" id="commande-view-select" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;">
+                <option value="table">Vue tableau</option>
+                <option value="kanban">Vue Kanban</option>
+              </select>
             </div>
             <button class="btn" id="btn-new-commande"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouvelle commande</button>
           </div>
-          <div class="page-note">Chaque article saisi est mémorisé : il te sera proposé automatiquement lors des prochaines commandes. Le lien à un évènement est facultatif.</div>
-          <div class="table-scroll"><table class="data">
-            <thead><tr><th>Article</th><th>Qté</th><th>Fournisseur</th><th>Évènement lié</th><th>Date évènement</th><th>Date commande</th><th>Statut</th><th>Description</th><th></th></tr></thead>
+          <div class="page-note">Chaque commande peut contenir plusieurs articles. Le lien à un évènement et à un fournisseur est facultatif.</div>
+          <div class="table-scroll" id="commande-table-view"><table class="data">
+            <thead><tr><th>Articles</th><th>Fournisseur</th><th>Évènement lié</th><th>Date évènement</th><th>Date commande</th><th>Statut</th><th></th></tr></thead>
             <tbody id="commande-tbody"></tbody>
           </table></div>
-          <datalist id="commande-articles"></datalist>
-          <datalist id="commande-fournisseurs"></datalist>
+          <div id="commande-kanban" class="kanban-board" style="display:none;"></div>
         </div>
 
         <!-- PRESTATAIRE -->
@@ -634,6 +660,18 @@
             <thead><tr><th>Titre</th><th>Catégorie</th><th></th></tr></thead>
             <tbody id="notes-tbody"></tbody>
           </table></div>
+        </div>
+
+        <!-- MAIL (placeholder) -->
+        <div class="page" id="page-mail">
+          <div class="page-title">Mail</div>
+          <div class="panel">
+            <h3>À venir</h3>
+            <p style="font-size:13.5px;color:var(--muted);line-height:1.6;">
+              L'onglet Mail (boîte de réception connectée à ta messagerie, modèles automatisés, mails programmés) est un chantier à part entière : il demande de connecter l'appli à un vrai service mail (Gmail/Outlook) via leur API officielle.<br><br>
+              C'est prévu, mais traité séparément du reste pour ne rien précipiter — dis-le quand tu veux qu'on s'y attaque.
+            </p>
+          </div>
         </div>
 
       </div>
@@ -676,6 +714,18 @@
       </button>
     </div>
     <div id="gsearch-results"></div>
+  </div>
+</div>
+
+<div class="pdf-preview-overlay" id="pdf-preview-overlay">
+  <div class="pdf-preview-box">
+    <div class="pdf-preview-head">
+      <strong id="pdf-preview-title">Aperçu</strong>
+      <button type="button" id="pdf-preview-close">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <iframe id="pdf-preview-iframe"></iframe>
   </div>
 </div>
 

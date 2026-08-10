@@ -1,4 +1,4 @@
-const CACHE_NAME = "reception-crm-v8";
+const CACHE_NAME = "reception-crm-v9";
 const ASSETS = ["./", "./index.html", "./app.js", "./manifest.json", "./logo.png"];
 
 self.addEventListener("install", event => {
