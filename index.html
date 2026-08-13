@@ -338,6 +338,7 @@
       <div class="nav-item" data-page="devis"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span>Devis</span></div>
       <div class="nav-item" data-page="factures"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2h16v20l-3-2-3 2-3-2-3 2-3-2-1 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/></svg><span>Facturation</span></div>
       <div class="nav-item" data-page="tarification"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L11 3.83A2 2 0 0 0 9.59 3H4a1 1 0 0 0-1 1v5.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.82 0l4.6-4.6a2 2 0 0 0 0-2.82z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg><span>Tarification</span></div>
+      <div class="nav-item" data-page="relance"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg><span>Relance</span></div>
 
       <div class="nav-section-label">Organisation</div>
       <div class="nav-item" data-page="commande"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><span>Commande</span></div>
@@ -345,6 +346,11 @@
       <div class="nav-item" data-page="notes"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>Notes</span></div>
       <div class="sidebar-footer">
         <div style="color:#C7CAD1;font-size:11.5px;margin-bottom:6px;" id="user-email-lbl"></div>
+        <div id="google-status-label" style="color:#8A8F98;font-size:10.5px;margin-bottom:4px;">Non connecté</div>
+        <button id="btn-connect-google" style="display:flex;align-items:center;gap:8px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          <span id="btn-connect-google-label">Connecter Google</span>
+        </button>
         <button id="theme-toggle-btn" style="display:flex;align-items:center;gap:8px;">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
           <span id="theme-toggle-label">Mode sombre</span>
@@ -660,6 +666,26 @@
             <thead><tr><th>Titre</th><th>Catégorie</th><th></th></tr></thead>
             <tbody id="notes-tbody"></tbody>
           </table></div>
+        </div>
+
+        <!-- RELANCE -->
+        <div class="page" id="page-relance">
+          <div class="page-title">Relance</div>
+          <div class="page-note">Nécessite d'avoir connecté ton compte Google (bas de la sidebar) pour pouvoir envoyer un mail via Gmail.</div>
+          <div class="panel">
+            <h3>Factures impayées en retard</h3>
+            <div class="table-scroll"><table class="data">
+              <thead><tr><th>Facture</th><th>Contact</th><th>Montant</th><th>Échéance</th><th>Dernière relance</th><th></th></tr></thead>
+              <tbody id="relance-factures-tbody"></tbody>
+            </table></div>
+          </div>
+          <div class="panel">
+            <h3>Devis en attente de réponse</h3>
+            <div class="table-scroll"><table class="data">
+              <thead><tr><th>Devis</th><th>Contact</th><th>Montant</th><th>Envoyé le</th><th>Dernière relance</th><th></th></tr></thead>
+              <tbody id="relance-devis-tbody"></tbody>
+            </table></div>
+          </div>
         </div>
 
         <!-- MAIL (placeholder) -->

@@ -5,6 +5,10 @@
 
 // ---- 1) CONFIGURATION ----
 const SUPABASE_URL = "https://fmstfqzmahhidvyespwk.supabase.co";
+// Client ID Google (public par nature, sans risque à exposer côté front —
+// le Client Secret, lui, ne vit que côté serveur dans les Edge Functions).
+const GOOGLE_CLIENT_ID = "497117069759-kaoespvo17tbkt6tsk3btgl9bd3ep7pd.apps.googleusercontent.com";
+const GOOGLE_SCOPES = "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZtc3RmcXptYWhoaWR2eWVzcHdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ4ODg4OTEsImV4cCI6MjEwMDQ2NDg5MX0.ObX6Xpg_ugP70d8Jf6WJNhsXezXUS8j7qIAo6ZQIqg4";
 let rememberMe = true;
 const dynamicAuthStorage = {
@@ -20,6 +24,92 @@ const dynamicAuthStorage = {
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { storage: dynamicAuthStorage, persistSession: true, autoRefreshToken: true },
 });
+
+// ---- Connexion Google (Calendrier + Gmail) ----
+const FUNCTIONS_URL = SUPABASE_URL.replace(".supabase.co", ".supabase.co/functions/v1");
+let googleConnected = false;
+let googleEmail = "";
+
+async function callGoogleFunction(name, payload) {
+  const { data: sessionData } = await sb.auth.getSession();
+  const token = sessionData && sessionData.session ? sessionData.session.access_token : null;
+  if (!token) throw new Error("Session expirée");
+  const res = await fetch(`${FUNCTIONS_URL}/${name}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Erreur serveur");
+  return data;
+}
+
+async function checkGoogleConnection() {
+  try {
+    const { data, error } = await sb.from("google_auth").select("google_email").maybeSingle();
+    googleConnected = !!(data && data.google_email);
+    googleEmail = (data && data.google_email) || "";
+  } catch (e) { googleConnected = false; }
+  updateGoogleStatusUI();
+}
+function updateGoogleStatusUI() {
+  const el = document.getElementById("google-status-label");
+  if (el) el.textContent = googleConnected ? `Connecté (${googleEmail})` : "Non connecté";
+  const btn = document.getElementById("btn-connect-google");
+  if (btn) btn.textContent = googleConnected ? "Reconnecter Google" : "Connecter Google";
+}
+async function connectGoogle() {
+  try {
+    const data = await callGoogleFunction("google-oauth-start", { returnUrl: window.location.href });
+    window.location.href = data.url;
+  } catch (e) {
+    showToast("Erreur : " + e.message);
+  }
+}
+
+// ---- Synchronisation Google Agenda pour un évènement ----
+async function syncEventToGoogle(ev) {
+  if (!googleConnected) return;
+  try {
+    const c = findContact(ev.contact_id);
+    const summary = `${ev.type_evenement || "Évènement"} — ${contactLabel(c)}`;
+    const payload = {
+      action: ev.google_event_id ? "update" : "create",
+      googleEventId: ev.google_event_id || null,
+      event: {
+        summary,
+        description: ev.notes || "",
+        date_debut: ev.date_evenement,
+        date_fin: ev.date_fin || ev.date_evenement,
+        heure_debut: ev.heure_debut || null,
+        heure_fin: ev.heure_fin || null,
+      },
+    };
+    const res = await callGoogleFunction("google-calendar-sync", payload);
+    if (res.googleEventId && res.googleEventId !== ev.google_event_id) {
+      await updateRow("evenements", ev.id, { google_event_id: res.googleEventId, google_synced: true });
+    }
+  } catch (e) {
+    showToast("Synchro Google Agenda échouée : " + e.message);
+  }
+}
+async function deleteEventFromGoogle(ev) {
+  if (!googleConnected || !ev.google_event_id) return;
+  try { await callGoogleFunction("google-calendar-sync", { action: "delete", googleEventId: ev.google_event_id }); } catch (e) { /* silencieux */ }
+}
+
+// ---- Envoi d'une relance par Gmail ----
+async function sendGoogleMail(to, subject, body) {
+  if (!googleConnected) { showToast("Connecte d'abord ton compte Google (bas de la sidebar)."); return false; }
+  try {
+    await callGoogleFunction("google-send-mail", { to, subject, body });
+    showToast("Relance envoyée");
+    return true;
+  } catch (e) {
+    showToast("Erreur d'envoi : " + e.message);
+    return false;
+  }
+}
 
 // ---- Jeu d'icônes SVG (style trait fin, remplace les emojis) ----
 const ICON_PATHS = {
@@ -59,6 +149,10 @@ const ICON_PATHS = {
   activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
   search: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
 };
+// ---- Intégration Google (Gmail + Agenda) ----
+// Déjà géré plus haut par callGoogleFunction / checkGoogleConnection / connectGoogle
+// / syncEventToGoogle / sendGoogleMail — voir tête de fichier.
+
 function icon(name, size) {
   size = size || 16;
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;flex-shrink:0;">${ICON_PATHS[name] || ""}</svg>`;
@@ -480,6 +574,23 @@ async function onLoggedIn(user) {
   renderNotifPanel();
   clearInterval(window._notifInterval);
   window._notifInterval = setInterval(async () => { await refreshCache(); renderNotifPanel(); }, 5 * 60 * 1000);
+  checkGoogleConnection();
+  handleGoogleOAuthReturn();
+}
+function handleGoogleOAuthReturn() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("google_connected")) {
+    showToast("Compte Google connecté !");
+    checkGoogleConnection();
+  } else if (params.get("google_error")) {
+    showToast("Erreur : connexion Google échouée (" + params.get("google_error") + ")");
+  } else {
+    return;
+  }
+  params.delete("google_connected");
+  params.delete("google_error");
+  const clean = window.location.pathname + (params.toString() ? "?" + params.toString() : "");
+  window.history.replaceState({}, "", clean);
 }
 async function handleLogout() {
   await sb.auth.signOut();
@@ -521,6 +632,59 @@ function renderPage(key) {
   else if (key === "commande") renderCommande();
   else if (key === "prestataire") renderPrestataire();
   else if (key === "notes") renderNotes();
+  else if (key === "relance") renderRelance();
+}
+// ========================================================================
+//  RELANCE
+// ========================================================================
+function renderRelance() {
+  const today = todayStr();
+  const facturesRetard = cache.factures.filter(f => !["Payée", "Annulée"].includes(f.statut) && f.date_echeance && f.date_echeance < today);
+  const devisAttente = cache.devis.filter(d => ["Envoyé", "En attente"].includes(d.statut));
+
+  document.getElementById("relance-factures-tbody").innerHTML = facturesRetard.length ? facturesRetard.map(f => {
+    const c = findContact(f.contact_id);
+    return `<tr>
+      <td>${f.numero || "—"}</td><td>${contactLabel(c)}</td><td>${f.montant_ttc ? f.montant_ttc + " €" : "—"}</td>
+      <td>${fmtDateFR(f.date_echeance)}</td><td>${fmtDateFR(f.derniere_relance) || "—"}</td>
+      <td class="row-actions"><button class="btn secondary" ${c && c.email ? "" : "disabled"} onclick="openRelanceCompose('facture', ${f.id})">${icon("mic",13)} Envoyer relance</button></td>
+    </tr>`;
+  }).join("") : `<tr class="empty-row"><td colspan="6">Aucune facture en retard 🎉</td></tr>`;
+
+  document.getElementById("relance-devis-tbody").innerHTML = devisAttente.length ? devisAttente.map(d => {
+    const c = devisContact(d);
+    return `<tr>
+      <td>${d.numero || "—"}</td><td>${contactLabel(c)}</td><td>${d.montant_ttc ? d.montant_ttc + " €" : "—"}</td>
+      <td>${fmtDateFR((d.date_creation || "").slice(0, 10))}</td><td>${fmtDateFR(d.derniere_relance) || "—"}</td>
+      <td class="row-actions"><button class="btn secondary" ${c && c.email ? "" : "disabled"} onclick="openRelanceCompose('devis', ${d.id})">${icon("mic",13)} Envoyer relance</button></td>
+    </tr>`;
+  }).join("") : `<tr class="empty-row"><td colspan="6">Aucun devis en attente</td></tr>`;
+}
+
+function openRelanceCompose(type, id) {
+  const item = type === "facture" ? findFacture(id) : findDevis(id);
+  const c = type === "facture" ? findContact(item.contact_id) : devisContact(item);
+  if (!c || !c.email) { showToast("Ce contact n'a pas d'adresse email"); return; }
+
+  const subject = type === "facture"
+    ? `Relance — Facture ${item.numero || ""} en attente de règlement`
+    : `Relance — Votre devis ${item.numero || ""}`;
+  const body = type === "facture"
+    ? `Bonjour ${c.prenom || ""},\n\nNous n'avons pas encore reçu le règlement de la facture ${item.numero || ""} d'un montant de ${item.montant_ttc || ""} €, échue le ${fmtDateFR(item.date_echeance)}.\n\nMerci de bien vouloir procéder au paiement dans les meilleurs délais.\n\nCordialement,\n${EMETTEUR.nom}`
+    : `Bonjour ${c.prenom || ""},\n\nNous revenons vers vous concernant le devis ${item.numero || ""} qui vous a été envoyé. N'hésitez pas à nous faire part de vos questions ou à nous confirmer votre accord.\n\nCordialement,\n${EMETTEUR.nom}`;
+
+  const html = `
+    <div class="field"><label>Destinataire</label><input value="${escapeAttr(c.email)}" disabled></div>
+    <div class="field"><label>Objet</label><input id="relance-subject" value="${escapeAttr(subject)}"></div>
+    <div class="field"><label>Message</label><textarea id="relance-body" style="min-height:220px;">${body}</textarea></div>`;
+  openRawModal("Envoyer une relance", html, async () => {
+    const ok = await sendGoogleMail(c.email, document.getElementById("relance-subject").value, document.getElementById("relance-body").value);
+    if (ok) {
+      await updateRow(type === "facture" ? "factures" : "devis", id, { derniere_relance: todayStr() });
+      closeModal();
+      await refreshAll();
+    }
+  });
 }
 async function refreshAll() { await refreshCache(); renderPage(currentPage); }
 function goToFilter(page, selectId, value) {
@@ -1870,6 +2034,7 @@ function openEvenementDialog(id, defaultDate) {
         const c = findContact(saved.contact_id);
         if (c && c.categorie === "Prospect") await updateRow("contacts", c.id, { categorie: "Client" });
       }
+      await syncEventToGoogle(saved);
       await refreshAll();
     },
   });
@@ -2815,8 +2980,12 @@ async function saveModal() {
 }
 function confirmDelete(table, id, afterFn) {
   if (!confirm("Supprimer cet élément ? Cette action est irréversible.")) return;
+  const evForGoogle = table === "evenements" ? findEvenement(id) : null;
   deleteRow(table, id).then(async ok => {
-    if (ok) { showToast("Supprimé"); await refreshCache(); if (afterFn) afterFn(); else renderPage(currentPage); }
+    if (ok) {
+      if (evForGoogle) await deleteEventFromGoogle(evForGoogle);
+      showToast("Supprimé"); await refreshCache(); if (afterFn) afterFn(); else renderPage(currentPage);
+    }
   });
 }
 
@@ -2829,6 +2998,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("auth-password").addEventListener("keydown", e => { if (e.key === "Enter") handleAuthSubmit(); });
   document.getElementById("logout-btn").addEventListener("click", handleLogout);
   document.getElementById("theme-toggle-btn").addEventListener("click", toggleTheme);
+  document.getElementById("btn-connect-google").addEventListener("click", connectGoogle);
   document.getElementById("menu-toggle-btn").addEventListener("click", openMobileMenu);
   document.getElementById("sidebar-overlay").addEventListener("click", closeMobileMenu);
   document.getElementById("global-search-btn").addEventListener("click", openGlobalSearch);
