@@ -1651,7 +1651,7 @@ function generateDevisPDF(id, preview) {
 
   // ---- Encadré client ----
   const clientLines = [contactLabel(c), c && c.societe, c && c.email, c && c.telephone, c && c.adresse, e ? ("Projet : " + eventLabel(e).replace(/→/g, "-")) : ""].filter(Boolean);
-  const boxH = 9 + clientLines.length * 4.6;
+  const boxH = 23 + (clientLines.length - 1) * 4.6;
   doc.setFillColor(...ACCENT_LIGHT);
   doc.roundedRect(14, 48, 182, boxH, 2, 2, "F");
   doc.setFontSize(8.5); doc.setTextColor(120, 100, 60);
@@ -1660,7 +1660,7 @@ function generateDevisPDF(id, preview) {
   let y = 62.5;
   clientLines.forEach(l => { doc.text(String(l), 20, y); y += 4.6; });
 
-  y += 8;
+  y += 10;
   // ---- Tableau : en-tête colorée ----
   doc.setFillColor(...ACCENT);
   doc.rect(14, y - 5, 182, 8, "F");
