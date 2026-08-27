@@ -1403,11 +1403,7 @@ function openDevisEditor(id) {
       <span><label style="font-size:12px;color:var(--muted);">Statut : </label>
       <select id="ed-statut" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;">
       ${STATUTS_DEVIS.map(s => `<option value="${s}" ${s === d.statut ? "selected" : ""}>${s}</option>`).join("")}</select></span>
-      <span><label style="font-size:12px;color:var(--muted);">Acompte reçu : </label>
-      <select id="ed-acompte" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;">
-      <option value="Non" ${!d.acompte ? "selected" : ""}>Non</option>
-      <option value="Oui" ${d.acompte ? "selected" : ""}>Oui</option></select></span>
-      <span><label style="font-size:12px;color:var(--muted);">Montant (€) : </label>
+      <span><label style="font-size:12px;color:var(--muted);">Acompte reçu (€) : </label>
       <input id="ed-montant-acompte" type="number" step="0.01" value="${d.montant_acompte != null ? d.montant_acompte : ""}" style="width:90px;padding:5px 8px;border:1px solid var(--border);border-radius:5px;"></span>
     </div>`;
   document.getElementById("ed-emetteur").innerHTML =
@@ -1504,12 +1500,11 @@ async function saveDevisEditor(closeAfter) {
   const d = findDevis(edState.id); if (!d) return;
   const tot = editorTotals();
   const newStatut = document.getElementById("ed-statut") ? document.getElementById("ed-statut").value : d.statut;
-  const acompteRecu = document.getElementById("ed-acompte") ? document.getElementById("ed-acompte").value : d.acompte;
   const montantAcompteRecu = document.getElementById("ed-montant-acompte") ? document.getElementById("ed-montant-acompte").value : d.montant_acompte;
   const statutChanged = newStatut !== d.statut;
   await updateRow("devis", edState.id, {
     lignes: edState.lignes, montant_ht: tot.ht, tva: null, montant_ttc: tot.ttc, statut: newStatut,
-    acompte: acompteRecu === "Oui", montant_acompte: montantAcompteRecu === "" ? null : Number(montantAcompteRecu),
+    acompte: montantAcompteRecu !== "" && Number(montantAcompteRecu) > 0, montant_acompte: montantAcompteRecu === "" ? null : Number(montantAcompteRecu),
   });
   await refreshCache();
   const updated = findDevis(edState.id);
@@ -1594,6 +1589,15 @@ async function createDevisReminders(d) {
 }
 
 // ---- PDF devis ----
+let LOGO_DATA_URL = null;
+(function preloadLogo() {
+  fetch("logo.png").then(r => r.blob()).then(blob => {
+    const reader = new FileReader();
+    reader.onload = () => { LOGO_DATA_URL = reader.result; };
+    reader.readAsDataURL(blob);
+  }).catch(() => {});
+})();
+
 function drawEmetteur(doc) {
   doc.setFontSize(10);
   let y = 16;
@@ -1616,14 +1620,15 @@ function generateDevisPDF(id, preview) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   drawEmetteur(doc);
-  doc.setFontSize(20); doc.text("DEVIS", 20, 22);
+  if (LOGO_DATA_URL) { try { doc.addImage(LOGO_DATA_URL, "PNG", 20, 10, 22, 22); } catch (e) {} }
+  doc.setFontSize(20); doc.text("DEVIS", 20, 42);
   doc.setFontSize(11);
-  doc.text("N° : " + (d.numero || "—"), 20, 34);
-  doc.text("Date : " + fmtDateFR((d.date_creation || todayStr()).slice(0, 10)), 20, 41);
-  doc.text("Valable jusqu'au : " + fmtDateFR(d.date_validite || addDaysISO(todayStr(), 30)), 20, 48);
+  doc.text("N° : " + (d.numero || "—"), 20, 54);
+  doc.text("Date : " + fmtDateFR((d.date_creation || todayStr()).slice(0, 10)), 20, 61);
+  doc.text("Valable jusqu'au : " + fmtDateFR(d.date_validite || addDaysISO(todayStr(), 30)), 20, 68);
 
-  doc.setFontSize(12); doc.text("Client", 20, 62); doc.setFontSize(11);
-  let y = 69;
+  doc.setFontSize(12); doc.text("Client", 20, 82); doc.setFontSize(11);
+  let y = 89;
   [contactLabel(c), c && c.societe, c && c.email, c && c.telephone, c && c.adresse, e ? ("Évènement : " + eventLabel(e)) : ""]
     .filter(Boolean).forEach(l => { doc.text(String(l), 20, y); y += 7; });
 
