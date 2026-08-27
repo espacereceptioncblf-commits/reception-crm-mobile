@@ -1274,6 +1274,7 @@ function lastDevisNumero() {
   return [...cache.devis].sort((a, b) => (b.date_creation || "").localeCompare(a.date_creation || ""))[0].numero;
 }
 
+let devisView = "tableau";
 function renderDevis() {
   ensureFilterOptions("devis-filter-statut", STATUTS_DEVIS);
   bindSearch("devis-search", renderDevis);
@@ -1288,6 +1289,10 @@ function renderDevis() {
   let rows = [...cache.devis].sort((a, b) => (b.date_creation || "").localeCompare(a.date_creation || ""));
   if (filter) rows = rows.filter(d => d.statut === filter);
   if (search) rows = rows.filter(d => (contactLabel(devisContact(d)) + " " + (d.numero || "")).toLowerCase().includes(search));
+
+  document.getElementById("devis-table-view").style.display = devisView === "tableau" ? "block" : "none";
+  document.getElementById("devis-kanban-view").style.display = devisView === "kanban" ? "flex" : "none";
+  if (devisView === "kanban") { renderDevisKanban(rows); return; }
 
   const tbody = document.getElementById("devis-tbody");
   tbody.innerHTML = rows.length ? rows.map(d => {
@@ -1306,6 +1311,49 @@ function renderDevis() {
         <button onclick="confirmDelete('devis', ${d.id}, renderDevis)">${icon("trash",14)}</button>
       </td></tr>`;
   }).join("") : emptyState(6, "Aucun devis pour l'instant", "Créer ton premier devis", "openDevisDialog(null)");
+}
+
+function renderDevisKanban(rows) {
+  const board = document.getElementById("devis-kanban-view");
+  board.innerHTML = STATUTS_DEVIS.map(statut => {
+    const items = rows.filter(d => d.statut === statut);
+    const color = STATUT_COLORS[statut] || "var(--muted)";
+    const cards = items.map(d => {
+      const e = devisEvent(d);
+      const titre = (d.numero || "Devis") + (d.montant_ttc ? " — " + d.montant_ttc + " €" : "") + (d.finalise ? " " + icon("check", 11) : "");
+      return `<div class="kanban-card" draggable="true" data-id="${d.id}" onclick="openDevisEditor(${d.id})" style="border-left:3px solid ${color};">
+        <div class="kc-name">${titre}</div>
+        <div class="kc-date">${contactLabel(devisContact(d))}${e ? " · " + eventLabel(e) : ""}</div>
+      </div>`;
+    }).join("");
+    return `<div class="kanban-col" data-statut="${statut}" style="border-top:3px solid ${color};">
+      <h4><span style="display:inline-flex;align-items:center;gap:6px;"><i style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;"></i>${statut}</span> <span>${items.length}</span></h4>
+      ${cards}
+    </div>`;
+  }).join("");
+
+  board.querySelectorAll(".kanban-card").forEach(card => {
+    card.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/plain", card.dataset.id); e.dataTransfer.effectAllowed = "move"; });
+  });
+  board.querySelectorAll(".kanban-col").forEach(col => {
+    col.addEventListener("dragover", (e) => { e.preventDefault(); col.classList.add("drag-over"); });
+    col.addEventListener("dragleave", () => col.classList.remove("drag-over"));
+    col.addEventListener("drop", async (e) => {
+      e.preventDefault(); col.classList.remove("drag-over");
+      const id = Number(e.dataTransfer.getData("text/plain"));
+      const newStatut = col.dataset.statut;
+      const d = findDevis(id);
+      if (!d || d.statut === newStatut) return;
+      const wasEnvoye = d.statut === "Envoyé";
+      const saved = await updateRow("devis", id, { statut: newStatut });
+      if (saved) {
+        await refreshCache();
+        if (["Envoyé", "Accepté"].includes(newStatut) && newStatut !== d.statut) await createDevisReminders(findDevis(id));
+        showToast("Statut mis à jour : " + newStatut);
+        renderDevis();
+      }
+    });
+  });
 }
 async function updateDevisDateCreation(id, val) {
   if (!val) return;
@@ -1619,8 +1667,39 @@ function generateDevisPDF(id, preview) {
     d.cgv.forEach((c2, i) => { const t = doc.splitTextToSize((i + 1) + ". " + c2, 175); doc.text(t, 20, y); y += t.length * 5 + 1; if (y > 255) { doc.addPage(); y = 20; } });
   }
   drawFooter(doc);
-  if (preview) openPdfPreview(d.numero || "Devis", doc.output("bloburl"));
-  else doc.save((d.numero || "devis").replace(/\s+/g, "_") + ".pdf");
+  if (preview) { openPdfPreview(d.numero || "Devis", doc.output("bloburl")); return; }
+  const filename = (d.numero || "devis").replace(/\s+/g, "_") + ".pdf";
+  showDownloadOverlay(filename, () => doc.save(filename));
+}
+function showDownloadOverlay(fileName, onComplete) {
+  const overlay = document.getElementById("dl-overlay");
+  const iconWrap = document.getElementById("dl-icon-wrap");
+  const checkWrap = document.getElementById("dl-check-wrap");
+  const filenameEl = document.getElementById("dl-filename");
+  const statusEl = document.getElementById("dl-status");
+  const fillEl = document.getElementById("dl-fill");
+
+  filenameEl.textContent = fileName || "Fichier";
+  statusEl.textContent = "Préparation de ton fichier…";
+  iconWrap.style.display = "flex";
+  checkWrap.classList.remove("show");
+  checkWrap.style.display = "none";
+  fillEl.style.transition = "none";
+  fillEl.style.width = "0%";
+  void fillEl.offsetWidth;
+  fillEl.style.transition = "width 1.1s cubic-bezier(.4,0,.2,1)";
+
+  overlay.classList.add("show");
+  requestAnimationFrame(() => { fillEl.style.width = "100%"; });
+
+  setTimeout(() => {
+    iconWrap.style.display = "none";
+    checkWrap.style.display = "flex";
+    requestAnimationFrame(() => checkWrap.classList.add("show"));
+    statusEl.textContent = "Fichier prêt !";
+  }, 1100);
+
+  setTimeout(() => { overlay.classList.remove("show"); if (onComplete) onComplete(); }, 1500);
 }
 function openPdfPreview(title, blobUrl) {
   document.getElementById("pdf-preview-title").textContent = title;
@@ -3051,6 +3130,13 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("prospect-view-select").addEventListener("change", (e) => { prospectView = e.target.value; renderSuivi(); });
   document.getElementById("btn-new-devis").addEventListener("click", () => openDevisDialog(null));
   document.getElementById("btn-manage-cgv").addEventListener("click", openCgvManager);
+  document.querySelectorAll("#devis-view-tabs .cat-tab").forEach(btn => {
+    btn.addEventListener("click", () => {
+      devisView = btn.dataset.view;
+      document.querySelectorAll("#devis-view-tabs .cat-tab").forEach(b => b.classList.toggle("active", b === btn));
+      renderDevis();
+    });
+  });
   document.getElementById("btn-export-devis-csv").addEventListener("click", exportDevisCSV);
   document.getElementById("btn-new-facture").addEventListener("click", () => openFactureDialog(null));
   document.getElementById("btn-export-factures-csv").addEventListener("click", exportFacturesCSV);

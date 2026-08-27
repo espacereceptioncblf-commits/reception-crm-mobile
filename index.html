@@ -130,6 +130,25 @@
   .empty-state .es-msg{font-size:13.5px;color:var(--muted);}
 
   .kanban-board{display:flex;gap:14px;overflow-x:auto;padding-bottom:10px;align-items:flex-start;}
+  .cat-tabs{display:flex;gap:8px;flex-wrap:wrap;}
+  .cat-tab{border:1px solid var(--border);background:var(--card);padding:8px 16px;border-radius:20px;font-size:12.5px;font-weight:600;color:var(--muted);transition:.15s;}
+  .cat-tab:hover{border-color:var(--accent);color:var(--text);}
+  .cat-tab.active{color:#fff;border-color:transparent;background:var(--accent);}
+
+  .dl-overlay{position:fixed;inset:0;background:rgba(11,18,32,.55);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:99;opacity:0;pointer-events:none;transition:opacity .25s ease;}
+  .dl-overlay.show{opacity:1;pointer-events:auto;}
+  .dl-card{background:#fff;border-radius:18px;padding:34px 32px;width:320px;max-width:88vw;box-shadow:0 24px 60px -14px rgba(11,18,32,.4);text-align:center;transform:scale(.94);transition:transform .25s ease;color:#20222A;}
+  .dl-overlay.show .dl-card{transform:scale(1);}
+  .dl-icon-wrap,.dl-check-wrap{width:60px;height:60px;margin:0 auto 16px;border-radius:16px;display:flex;align-items:center;justify-content:center;}
+  .dl-icon-wrap{background:#F3E9D6;}
+  .dl-icon-wrap svg{width:28px;height:28px;color:var(--accent);}
+  .dl-check-wrap{border-radius:50%;background:var(--success);transform:scale(0);transition:transform .32s cubic-bezier(.34,1.56,.64,1);}
+  .dl-check-wrap.show{transform:scale(1);}
+  .dl-check-wrap svg{width:28px;height:28px;color:#fff;}
+  .dl-filename{font-weight:700;font-size:14px;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .dl-status{font-size:12.5px;color:#8A8F98;margin-bottom:16px;}
+  .dl-track{height:6px;border-radius:99px;background:#F0EEE8;overflow:hidden;}
+  .dl-fill{height:100%;width:0%;background:var(--accent);border-radius:99px;transition:width 1.1s cubic-bezier(.4,0,.2,1);}
   .kanban-col{background:#EFEEE9;border-radius:16px;padding:10px;min-width:250px;flex:0 0 250px;}
   :root[data-theme="dark"] .kanban-col{background:#1A1C22;}
   .kanban-col h4{margin:2px 6px 10px;font-size:12.5px;display:flex;justify-content:space-between;align-items:center;color:var(--text);}
@@ -516,12 +535,17 @@
             </div>
             <button class="btn secondary" id="btn-export-devis-csv"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export CSV</button>
             <button class="btn secondary" id="btn-manage-cgv">CGV</button>
+            <div class="cat-tabs" id="devis-view-tabs" style="margin:0;">
+              <button type="button" class="cat-tab active" data-view="tableau"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Tableau</button>
+              <button type="button" class="cat-tab" data-view="kanban"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="10" rx="1"/></svg> Kanban</button>
+            </div>
             <button class="btn" id="btn-new-devis"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouveau devis</button>
           </div>
-          <div class="table-scroll"><table class="data">
+          <div class="table-scroll" id="devis-table-view"><table class="data">
             <thead><tr><th>N°</th><th>Évènement</th><th>Date création</th><th>Montant TTC</th><th>Statut</th><th></th></tr></thead>
             <tbody id="devis-tbody"></tbody>
           </table></div>
+          <div id="devis-kanban-view" class="kanban-board" style="display:none;"></div>
         </div>
 
         <!-- FACTURATION -->
@@ -808,6 +832,20 @@
       <button class="btn secondary" type="button" id="ed-pdf">Télécharger PDF</button>
       <button class="btn" type="button" id="ed-finaliser">Finaliser (CGV)</button>
     </div>
+  </div>
+</div>
+
+<div class="dl-overlay" id="dl-overlay">
+  <div class="dl-card">
+    <div class="dl-icon-wrap" id="dl-icon-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+    </div>
+    <div class="dl-check-wrap" id="dl-check-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <div class="dl-filename" id="dl-filename">Fichier</div>
+    <div class="dl-status" id="dl-status">Préparation de ton fichier…</div>
+    <div class="dl-track"><div class="dl-fill" id="dl-fill"></div></div>
   </div>
 </div>
 
