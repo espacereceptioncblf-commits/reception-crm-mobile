@@ -1391,6 +1391,7 @@ function openDevisEditor(id) {
   if (!d) return;
   edState = { id, lignes: Array.isArray(d.lignes) ? JSON.parse(JSON.stringify(d.lignes)) : [] };
   if (!edState.lignes.length) edState.lignes.push({ designation: "", qte: 1, pu_ttc: "", remise: 0, tva: 20 });
+  document.getElementById("ed-description").value = d.notes || "";
 
   const e = devisEvent(d);
   const c = devisContact(d);
@@ -1505,6 +1506,7 @@ async function saveDevisEditor(closeAfter) {
   await updateRow("devis", edState.id, {
     lignes: edState.lignes, montant_ht: tot.ht, tva: null, montant_ttc: tot.ttc, statut: newStatut,
     acompte: montantAcompteRecu !== "" && Number(montantAcompteRecu) > 0, montant_acompte: montantAcompteRecu === "" ? null : Number(montantAcompteRecu),
+    notes: document.getElementById("ed-description").value || null,
   });
   await refreshCache();
   const updated = findDevis(edState.id);
@@ -1619,57 +1621,98 @@ function generateDevisPDF(id, preview) {
   const lignes = Array.isArray(d.lignes) ? d.lignes : [];
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
-  drawEmetteur(doc);
-  if (LOGO_DATA_URL) { try { doc.addImage(LOGO_DATA_URL, "PNG", 20, 10, 22, 22); } catch (e) {} }
-  doc.setFontSize(20); doc.text("DEVIS", 20, 42);
-  doc.setFontSize(11);
-  doc.text("N° : " + (d.numero || "—"), 20, 54);
-  doc.text("Date : " + fmtDateFR((d.date_creation || todayStr()).slice(0, 10)), 20, 61);
-  doc.text("Valable jusqu'au : " + fmtDateFR(d.date_validite || addDaysISO(todayStr(), 30)), 20, 68);
+  const ACCENT = [184, 134, 46];     // #B8862E
+  const ACCENT_LIGHT = [246, 238, 223]; // fond clair encadré client
+  const ROW_ALT = [248, 246, 241];   // lignes de tableau alternées
 
-  doc.setFontSize(12); doc.text("Client", 20, 82); doc.setFontSize(11);
-  let y = 89;
-  [contactLabel(c), c && c.societe, c && c.email, c && c.telephone, c && c.adresse, e ? ("Évènement : " + eventLabel(e)) : ""]
-    .filter(Boolean).forEach(l => { doc.text(String(l), 20, y); y += 7; });
+  // ---- Bandeau d'en-tête coloré ----
+  doc.setFillColor(...ACCENT);
+  doc.rect(0, 0, 210, 34, "F");
+  if (LOGO_DATA_URL) { try { doc.addImage(LOGO_DATA_URL, "PNG", 14, 6, 22, 22); } catch (e) {} }
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(24); doc.text("DEVIS", 42, 21);
+  doc.setFontSize(9);
+  let ey = 10;
+  [EMETTEUR.nom, EMETTEUR.adresse, EMETTEUR.siret, EMETTEUR.email, "Tél : " + EMETTEUR.telephone].forEach(l => { doc.text(String(l), 196, ey, { align: "right" }); ey += 4.4; });
+  doc.setTextColor(0, 0, 0);
 
-  y += 4;
-  // en-têtes tableau
-  doc.setFontSize(9); doc.setTextColor(90);
-  doc.text("Désignation", 20, y); doc.text("Qté", 108, y); doc.text("PU TTC", 122, y);
-  doc.text("Rem.", 142, y); doc.text("TVA", 158, y); doc.text("Total TTC", 176, y);
-  doc.setTextColor(0); doc.setFontSize(10); y += 3;
-  doc.line(20, y, 195, y); y += 6;
+  // ---- Ligne numéro / date / validité ----
+  doc.setFontSize(10);
+  doc.text(`N° : ${d.numero || "—"}    Date : ${fmtDateFR((d.date_creation || todayStr()).slice(0, 10))}    Valable jusqu'au : ${fmtDateFR(d.date_validite || addDaysISO(todayStr(), 30))}`, 14, 43);
+
+  // ---- Encadré client ----
+  const clientLines = [contactLabel(c), c && c.societe, c && c.email, c && c.telephone, c && c.adresse, e ? ("Projet : " + eventLabel(e)) : ""].filter(Boolean);
+  const boxH = 10 + clientLines.length * 5.5;
+  doc.setFillColor(...ACCENT_LIGHT);
+  doc.roundedRect(14, 50, 182, boxH, 2, 2, "F");
+  doc.setFontSize(8.5); doc.setTextColor(120, 100, 60);
+  doc.text("CLIENT", 20, 58);
+  doc.setTextColor(20, 22, 26); doc.setFontSize(10.5);
+  let y = 65;
+  clientLines.forEach(l => { doc.text(String(l), 20, y); y += 5.5; });
+
+  y += 8;
+  // ---- Tableau : en-tête colorée ----
+  doc.setFillColor(...ACCENT);
+  doc.rect(14, y - 5, 182, 8, "F");
+  doc.setTextColor(255, 255, 255); doc.setFontSize(8.5);
+  doc.text("DÉSIGNATION", 18, y);
+  doc.text("QTÉ", 108, y);
+  doc.text("PU TTC", 122, y);
+  doc.text("REM.", 142, y);
+  doc.text("TVA", 158, y);
+  doc.text("TOTAL TTC", 176, y);
+  doc.setTextColor(20, 22, 26); doc.setFontSize(10);
+  y += 8;
+
   let tHT = 0, tTVA = 0, tTTC = 0;
   const footnotes = [];
-  lignes.forEach(l => {
+  lignes.forEach((l, i) => {
     const r = computeLine(l); tHT += r.ht; tTVA += r.tva; tTTC += r.ttc;
     let designationTxt = l.designation || "—";
     if (l.detail) { footnotes.push(l.detail); designationTxt += ` (*${footnotes.length})`; }
     const desig = doc.splitTextToSize(designationTxt, 82);
-    doc.text(desig, 20, y);
+    const rowH = Math.max(7, desig.length * 5);
+    if (i % 2 === 1) { doc.setFillColor(...ROW_ALT); doc.rect(14, y - 5, 182, rowH, "F"); }
+    doc.text(desig, 18, y);
     doc.text(String(l.qte ?? ""), 108, y);
     doc.text(Number(l.pu_ttc || 0).toFixed(2), 122, y);
     doc.text((l.remise ? l.remise + "%" : "—"), 142, y);
     doc.text((l.tva || 0) + "%", 158, y);
     doc.text(r.ttc.toFixed(2) + " €", 176, y);
-    y += Math.max(7, desig.length * 5);
+    y += rowH;
     if (y > 250) { doc.addPage(); y = 20; }
   });
+  y += 2;
   if (footnotes.length) {
     doc.setFontSize(8.5); doc.setTextColor(90);
-    footnotes.forEach((f, i) => { const t = doc.splitTextToSize(`*${i + 1} ${f}`, 175); doc.text(t, 20, y); y += t.length * 4; });
-    doc.setTextColor(0); y += 3;
+    footnotes.forEach((f, i) => { const t = doc.splitTextToSize(`*${i + 1} ${f}`, 175); doc.text(t, 14, y); y += t.length * 4; });
+    doc.setTextColor(20, 22, 26); y += 3;
   }
-  y += 2; doc.line(20, y, 195, y); y += 8;
-  doc.setFontSize(11);
-  doc.text("Total HT : " + round2(tHT).toFixed(2) + " €", 130, y); y += 6;
-  doc.text("Total TVA : " + round2(tTVA).toFixed(2) + " €", 130, y); y += 6;
-  doc.setFontSize(13); doc.text("TOTAL TTC : " + round2(tTTC).toFixed(2) + " €", 130, y); y += 12;
 
+  // ---- Totaux ----
+  y += 6;
+  doc.setFontSize(10.5);
+  doc.text("Total HT : " + round2(tHT).toFixed(2) + " €", 196, y, { align: "right" }); y += 6;
+  doc.text("Total TVA : " + round2(tTVA).toFixed(2) + " €", 196, y, { align: "right" }); y += 7;
+  doc.setFontSize(14); doc.setTextColor(...ACCENT);
+  doc.text("TOTAL TTC : " + round2(tTTC).toFixed(2) + " €", 196, y, { align: "right" });
+  doc.setTextColor(20, 22, 26); y += 8;
+  if (d.montant_acompte) { doc.setFontSize(10); doc.text("Acompte reçu : " + Number(d.montant_acompte).toFixed(2) + " €", 196, y, { align: "right" }); y += 10; }
+  else y += 4;
+
+  // ---- CGV ----
   if (Array.isArray(d.cgv) && d.cgv.length) {
-    doc.setFontSize(11); doc.text("Conditions générales de vente :", 20, y); y += 6;
-    doc.setFontSize(10);
-    d.cgv.forEach((c2, i) => { const t = doc.splitTextToSize((i + 1) + ". " + c2, 175); doc.text(t, 20, y); y += t.length * 5 + 1; if (y > 255) { doc.addPage(); y = 20; } });
+    doc.setFontSize(11); doc.text("Conditions générales de vente :", 14, y); y += 6;
+    doc.setFontSize(9.5);
+    d.cgv.forEach((c2, i) => { const t = doc.splitTextToSize((i + 1) + ". " + c2, 182); doc.text(t, 14, y); y += t.length * 5 + 2; if (y > 260) { doc.addPage(); y = 20; } });
+  }
+  if (d.notes) {
+    y += 4; if (y > 255) { doc.addPage(); y = 20; }
+    doc.setFontSize(10.5); doc.setTextColor(20, 22, 26); doc.text("Description :", 14, y); y += 6;
+    doc.setFontSize(9.5); doc.setTextColor(60, 62, 68);
+    const t = doc.splitTextToSize(d.notes, 182); doc.text(t, 14, y); y += t.length * 5;
+    doc.setTextColor(20, 22, 26);
   }
   drawFooter(doc);
   if (preview) { openPdfPreview(d.numero || "Devis", doc.output("bloburl")); return; }
@@ -2789,8 +2832,17 @@ async function deleteTypeFacture(id) {
   document.getElementById("tf-mgr-list").innerHTML = renderTypesFactureRows();
 }
 
-function openCgvManager() {
-  const html = `<div id="cgv-mgr-list">${renderCgvMgrRows()}</div>
+async function ensureCgvSeeded() {
+  if (cache.cgv_options.length) return;
+  for (let i = 0; i < CGV_OPTIONS_DEFAUT.length; i++) {
+    await insertRow("cgv_options", { texte: CGV_OPTIONS_DEFAUT[i], ordre: i });
+  }
+  await refreshCache();
+}
+async function openCgvManager() {
+  await ensureCgvSeeded();
+  const html = `<p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Modifie ou supprime librement les conditions ci-dessous (y compris celles proposées par défaut).</p>
+    <div id="cgv-mgr-list">${renderCgvMgrRows()}</div>
     <div style="display:flex;gap:8px;margin-top:12px;">
       <input id="new-cgv-input" placeholder="Nouvelle condition…" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
       <button type="button" class="btn secondary" id="new-cgv-btn">${icon("plus", 13)} Ajouter</button>
