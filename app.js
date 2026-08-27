@@ -1592,10 +1592,16 @@ async function createDevisReminders(d) {
 
 // ---- PDF devis ----
 let LOGO_DATA_URL = null;
+let LOGO_PDF_DATA_URL = null;
 (function preloadLogo() {
   fetch("logo.png").then(r => r.blob()).then(blob => {
     const reader = new FileReader();
     reader.onload = () => { LOGO_DATA_URL = reader.result; };
+    reader.readAsDataURL(blob);
+  }).catch(() => {});
+  fetch("logo-transparent.png").then(r => r.blob()).then(blob => {
+    const reader = new FileReader();
+    reader.onload = () => { LOGO_PDF_DATA_URL = reader.result; };
     reader.readAsDataURL(blob);
   }).catch(() => {});
 })();
@@ -1627,28 +1633,31 @@ function generateDevisPDF(id, preview) {
 
   // ---- Bandeau d'en-tête coloré ----
   doc.setFillColor(...ACCENT);
-  doc.rect(0, 0, 210, 34, "F");
-  if (LOGO_DATA_URL) { try { doc.addImage(LOGO_DATA_URL, "PNG", 14, 6, 22, 22); } catch (e) {} }
+  doc.rect(0, 0, 210, 32, "F");
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(12, 6, 28, 21, 3, 3, "F");
+  if (LOGO_PDF_DATA_URL) { try { doc.addImage(LOGO_PDF_DATA_URL, "PNG", 14, 8.5, 24, 18); } catch (e) {} }
+  else if (LOGO_DATA_URL) { try { doc.addImage(LOGO_DATA_URL, "PNG", 15, 7.5, 20, 20); } catch (e) {} }
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(24); doc.text("DEVIS", 42, 21);
-  doc.setFontSize(9);
-  let ey = 10;
-  [EMETTEUR.nom, EMETTEUR.adresse, EMETTEUR.siret, EMETTEUR.email, "Tél : " + EMETTEUR.telephone].forEach(l => { doc.text(String(l), 196, ey, { align: "right" }); ey += 4.4; });
+  doc.setFontSize(22); doc.text("DEVIS", 46, 20);
+  doc.setFontSize(8.5);
+  let ey = 9;
+  [EMETTEUR.nom, EMETTEUR.adresse, EMETTEUR.siret, EMETTEUR.email, "Tél : " + EMETTEUR.telephone].forEach(l => { doc.text(String(l), 197, ey, { align: "right" }); ey += 4; });
   doc.setTextColor(0, 0, 0);
 
   // ---- Ligne numéro / date / validité ----
   doc.setFontSize(10);
-  doc.text(`N° : ${d.numero || "—"}    Date : ${fmtDateFR((d.date_creation || todayStr()).slice(0, 10))}    Valable jusqu'au : ${fmtDateFR(d.date_validite || addDaysISO(todayStr(), 30))}`, 14, 43);
+  doc.text(`N° : ${d.numero || "—"}    Date : ${fmtDateFR((d.date_creation || todayStr()).slice(0, 10))}    Valable jusqu'au : ${fmtDateFR(d.date_validite || addDaysISO(todayStr(), 30))}`, 14, 41);
 
   // ---- Encadré client ----
   const clientLines = [contactLabel(c), c && c.societe, c && c.email, c && c.telephone, c && c.adresse, e ? ("Projet : " + eventLabel(e)) : ""].filter(Boolean);
   const boxH = 10 + clientLines.length * 5.5;
   doc.setFillColor(...ACCENT_LIGHT);
-  doc.roundedRect(14, 50, 182, boxH, 2, 2, "F");
+  doc.roundedRect(14, 48, 182, boxH, 2, 2, "F");
   doc.setFontSize(8.5); doc.setTextColor(120, 100, 60);
-  doc.text("CLIENT", 20, 58);
+  doc.text("CLIENT", 20, 56);
   doc.setTextColor(20, 22, 26); doc.setFontSize(10.5);
-  let y = 65;
+  let y = 63;
   clientLines.forEach(l => { doc.text(String(l), 20, y); y += 5.5; });
 
   y += 8;
