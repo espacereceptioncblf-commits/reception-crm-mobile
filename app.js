@@ -1650,15 +1650,15 @@ function generateDevisPDF(id, preview) {
   doc.text(`N° : ${d.numero || "—"}    Date : ${fmtDateFR((d.date_creation || todayStr()).slice(0, 10))}    Valable jusqu'au : ${fmtDateFR(d.date_validite || addDaysISO(todayStr(), 30))}`, 14, 41);
 
   // ---- Encadré client ----
-  const clientLines = [contactLabel(c), c && c.societe, c && c.email, c && c.telephone, c && c.adresse, e ? ("Projet : " + eventLabel(e)) : ""].filter(Boolean);
-  const boxH = 10 + clientLines.length * 5.5;
+  const clientLines = [contactLabel(c), c && c.societe, c && c.email, c && c.telephone, c && c.adresse, e ? ("Projet : " + eventLabel(e).replace(/→/g, "-")) : ""].filter(Boolean);
+  const boxH = 9 + clientLines.length * 4.6;
   doc.setFillColor(...ACCENT_LIGHT);
   doc.roundedRect(14, 48, 182, boxH, 2, 2, "F");
   doc.setFontSize(8.5); doc.setTextColor(120, 100, 60);
   doc.text("CLIENT", 20, 56);
-  doc.setTextColor(20, 22, 26); doc.setFontSize(10.5);
-  let y = 63;
-  clientLines.forEach(l => { doc.text(String(l), 20, y); y += 5.5; });
+  doc.setTextColor(20, 22, 26); doc.setFontSize(9.5);
+  let y = 62.5;
+  clientLines.forEach(l => { doc.text(String(l), 20, y); y += 4.6; });
 
   y += 8;
   // ---- Tableau : en-tête colorée ----
