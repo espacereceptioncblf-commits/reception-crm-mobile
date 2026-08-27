@@ -1427,7 +1427,7 @@ function renderEditorLines() {
   tb.innerHTML = edState.lignes.map((l, i) => `
     <tr data-i="${i}">
       <td><input list="ed-desig" data-k="designation" value="${(l.designation || "").replace(/"/g, "&quot;")}">
-        <button type="button" title="Détail (facultatif, imprimé en note de bas de tableau)" onclick="editLigneDetail(${i})" style="background:none;border:none;color:${l.detail ? "var(--accent)" : "var(--muted)"};font-size:11px;padding:2px 0;">${icon("edit", 11)} Détail${l.detail ? " ✓" : ""}</button>
+        <button type="button" title="Détail (facultatif, imprimé directement sous cette ligne)" onclick="editLigneDetail(${i})" style="background:none;border:none;color:${l.detail ? "var(--accent)" : "var(--muted)"};font-size:11px;padding:2px 0;">${icon("edit", 11)} Détail${l.detail ? " ✓" : ""}</button>
       </td>
       <td><input type="number" data-k="qte" min="0" step="1" value="${l.qte != null ? l.qte : 1}" style="width:60px;"></td>
       <td><input type="number" data-k="pu_ttc" min="0" step="0.01" value="${l.pu_ttc != null ? l.pu_ttc : ""}" style="width:80px;"></td>
@@ -1675,29 +1675,30 @@ function generateDevisPDF(id, preview) {
   y += 8;
 
   let tHT = 0, tTVA = 0, tTTC = 0;
-  const footnotes = [];
   lignes.forEach((l, i) => {
     const r = computeLine(l); tHT += r.ht; tTVA += r.tva; tTTC += r.ttc;
-    let designationTxt = l.designation || "—";
-    if (l.detail) { footnotes.push(l.detail); designationTxt += ` (*${footnotes.length})`; }
+    const designationTxt = l.designation || "—";
     const desig = doc.splitTextToSize(designationTxt, 82);
-    const rowH = Math.max(7, desig.length * 5);
+    const detailLines = l.detail ? doc.splitTextToSize(l.detail, 175) : [];
+    const rowH = Math.max(7, desig.length * 5) + (detailLines.length ? detailLines.length * 4 + 2 : 0);
     if (i % 2 === 1) { doc.setFillColor(...ROW_ALT); doc.rect(14, y - 5, 182, rowH, "F"); }
+    doc.setFontSize(10); doc.setTextColor(20, 22, 26);
     doc.text(desig, 18, y);
     doc.text(String(l.qte ?? ""), 108, y);
     doc.text(Number(l.pu_ttc || 0).toFixed(2), 122, y);
     doc.text((l.remise ? l.remise + "%" : "—"), 142, y);
     doc.text((l.tva || 0) + "%", 158, y);
     doc.text(r.ttc.toFixed(2) + " €", 176, y);
+    if (detailLines.length) {
+      const detailY = y + desig.length * 5 - 1;
+      doc.setFontSize(8.5); doc.setTextColor(110, 112, 118);
+      doc.text(detailLines, 18, detailY);
+      doc.setFontSize(10); doc.setTextColor(20, 22, 26);
+    }
     y += rowH;
     if (y > 250) { doc.addPage(); y = 20; }
   });
-  y += 2;
-  if (footnotes.length) {
-    doc.setFontSize(8.5); doc.setTextColor(90);
-    footnotes.forEach((f, i) => { const t = doc.splitTextToSize(`*${i + 1} ${f}`, 175); doc.text(t, 14, y); y += t.length * 4; });
-    doc.setTextColor(20, 22, 26); y += 3;
-  }
+  y += 4;
 
   // ---- Totaux ----
   y += 6;
