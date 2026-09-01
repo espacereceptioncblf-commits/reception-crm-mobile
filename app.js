@@ -216,6 +216,11 @@ const EMETTEUR = {
   siret: "SIRET 944 891 332 00016",
   email: "espacereceptioncblf@gmail.com",
   telephone: "07 43 01 54 64",
+  capital: "SAS au capital de 1000 €",
+  siren: "944891332",
+  tva: "FR37944891332",
+  iban: "FR76 1780 7004 0965 6212 5736 666",
+  bic: "CCBPFRPPTLS",
 };
 
 const STATUT_COLORS = {
@@ -1612,6 +1617,45 @@ function drawEmetteur(doc) {
   [EMETTEUR.nom, EMETTEUR.adresse, EMETTEUR.siret, EMETTEUR.email, "Tél : " + EMETTEUR.telephone].forEach(l => { doc.text(l, 200, y, { align: "right" }); y += 5; });
   doc.setFontSize(11);
 }
+function drawEntrepriseBox(doc, y) {
+  const colX = [14, 76, 138];
+  const colAlign = ["left", "center", "center"];
+  const titles = ["Siège social", "Coordonnées", "Détails bancaires"];
+  const contents = [
+    [EMETTEUR.nom, EMETTEUR.capital, "N° SIREN : " + EMETTEUR.siren, "N° TVA : " + EMETTEUR.tva],
+    ["Espace Réception", "Château Bellevue La Forêt", EMETTEUR.adresse.split(",")[0], EMETTEUR.adresse.split(",").slice(1).join(",").trim() + " – France", EMETTEUR.telephone, EMETTEUR.email],
+    ["IBAN : " + EMETTEUR.iban.slice(0, 14), EMETTEUR.iban.slice(14).trim(), "BIC : " + EMETTEUR.bic],
+  ];
+  doc.setDrawColor(220, 216, 205);
+  doc.line(14, y, 196, y);
+  y += 8;
+
+  doc.setTextColor(20, 22, 26);
+  colX.forEach((x, i) => {
+    const align = colAlign[i];
+    doc.setFontSize(9.5); doc.setFont(undefined, "bold");
+    doc.text(titles[i], align === "center" ? x + 30 : x, y, { align });
+    doc.setFont(undefined, "normal");
+  });
+
+  let cy = y + 6;
+  const maxLines = Math.max(...contents.map(c => c.length));
+  for (let li = 0; li < maxLines; li++) {
+    colX.forEach((x, i) => {
+      const line = contents[i][li];
+      if (!line) return;
+      const align = colAlign[i];
+      const isBank = i === 2;
+      doc.setFontSize(9);
+      if (isBank) doc.setFont(undefined, "italic");
+      doc.text(line, align === "center" ? x + 30 : x, cy, { align });
+      if (isBank) doc.setFont(undefined, "normal");
+    });
+    cy += 5;
+  }
+  return cy;
+}
+
 function drawFooter(doc) {
   const h = doc.internal.pageSize.getHeight();
   doc.setFontSize(8); doc.setTextColor(120);
@@ -1639,10 +1683,7 @@ function generateDevisPDF(id, preview) {
   if (LOGO_PDF_DATA_URL) { try { doc.addImage(LOGO_PDF_DATA_URL, "PNG", 14, 8.5, 24, 18); } catch (e) {} }
   else if (LOGO_DATA_URL) { try { doc.addImage(LOGO_DATA_URL, "PNG", 15, 7.5, 20, 20); } catch (e) {} }
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(22); doc.text("DEVIS", 46, 20);
-  doc.setFontSize(8.5);
-  let ey = 9;
-  [EMETTEUR.nom, EMETTEUR.adresse, EMETTEUR.siret, EMETTEUR.email, "Tél : " + EMETTEUR.telephone].forEach(l => { doc.text(String(l), 197, ey, { align: "right" }); ey += 4; });
+  doc.setFontSize(24); doc.text("DEVIS", 46, 21);
   doc.setTextColor(0, 0, 0);
 
   // ---- Ligne numéro / date / validité ----
@@ -1724,7 +1765,9 @@ function generateDevisPDF(id, preview) {
     const t = doc.splitTextToSize(d.notes, 182); doc.text(t, 14, y); y += t.length * 5;
     doc.setTextColor(20, 22, 26);
   }
-  drawFooter(doc);
+  y += 10;
+  if (y > 235) { doc.addPage(); y = 20; }
+  drawEntrepriseBox(doc, y);
   if (preview) { openPdfPreview(d.numero || "Devis", doc.output("bloburl")); return; }
   const filename = (d.numero || "devis").replace(/\s+/g, "_") + ".pdf";
   showDownloadOverlay(filename, () => doc.save(filename));
