@@ -646,54 +646,80 @@ function renderPage(key) {
 // ========================================================================
 //  RELANCE
 // ========================================================================
-function renderRelance() {
+let relSel = null;
+function relanceItems() {
   const today = todayStr();
-  const facturesRetard = cache.factures.filter(f => !["Payée", "Annulée"].includes(f.statut) && f.date_echeance && f.date_echeance < today);
-  const devisAttente = cache.devis.filter(d => ["Envoyé", "En attente"].includes(d.statut));
-
-  document.getElementById("relance-factures-tbody").innerHTML = facturesRetard.length ? facturesRetard.map(f => {
-    const c = findContact(f.contact_id);
-    return `<tr>
-      <td>${f.numero || "—"}</td><td>${contactLabel(c)}</td><td>${f.montant_ttc ? f.montant_ttc + " €" : "—"}</td>
-      <td>${fmtDateFR(f.date_echeance)}</td><td>${fmtDateFR(f.derniere_relance) || "—"}</td>
-      <td class="row-actions"><button class="btn secondary" ${c && c.email ? "" : "disabled"} onclick="openRelanceCompose('facture', ${f.id})">${icon("mic",13)} Envoyer relance</button></td>
-    </tr>`;
-  }).join("") : `<tr class="empty-row"><td colspan="6">Aucune facture en retard 🎉</td></tr>`;
-
-  document.getElementById("relance-devis-tbody").innerHTML = devisAttente.length ? devisAttente.map(d => {
-    const c = devisContact(d);
-    return `<tr>
-      <td>${d.numero || "—"}</td><td>${contactLabel(c)}</td><td>${d.montant_ttc ? d.montant_ttc + " €" : "—"}</td>
-      <td>${fmtDateFR((d.date_creation || "").slice(0, 10))}</td><td>${fmtDateFR(d.derniere_relance) || "—"}</td>
-      <td class="row-actions"><button class="btn secondary" ${c && c.email ? "" : "disabled"} onclick="openRelanceCompose('devis', ${d.id})">${icon("mic",13)} Envoyer relance</button></td>
-    </tr>`;
-  }).join("") : `<tr class="empty-row"><td colspan="6">Aucun devis en attente</td></tr>`;
+  const out = [];
+  cache.factures.filter(f => !["Payée", "Annulée"].includes(f.statut) && f.date_echeance && f.date_echeance < today)
+    .forEach(f => out.push({ type: "facture", id: f.id, item: f, contact: findContact(f.contact_id) }));
+  cache.devis.filter(d => ["Envoyé", "En attente"].includes(d.statut))
+    .forEach(d => out.push({ type: "devis", id: d.id, item: d, contact: devisContact(d) }));
+  return out;
 }
-
-function openRelanceCompose(type, id) {
+function renderRelance() {
+  const items = relanceItems();
+  const today = todayStr();
+  document.getElementById("relance-count").textContent = items.length + (items.length > 1 ? " à relancer" : " à relancer");
+  document.getElementById("relance-google-state").textContent = googleConnected ? "Gmail connecté (" + googleEmail + ")" : "Gmail non connecté : connecte Google en bas du menu pour envoyer.";
+  const list = document.getElementById("relance-list");
+  if (!items.length) { list.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);">Rien à relancer pour le moment.</div>`; }
+  else list.innerHTML = items.map(r => {
+    const it = r.item, c = r.contact;
+    const label = r.type === "facture" ? `Facture ${it.numero || ""}` : `Devis ${it.numero || ""}`;
+    const sub = r.type === "facture"
+      ? `Échue le ${fmtDateFR(it.date_echeance)} (${Math.max(0, Math.round((new Date(today) - new Date(it.date_echeance)) / 86400000))} j de retard)`
+      : `Envoyé le ${fmtDateFR((it.date_creation || "").slice(0, 10))}`;
+    const color = r.type === "facture" ? "#C0392B" : "#B7791F", bg = r.type === "facture" ? "#FDECEC" : "#FDF1DA";
+    const active = relSel && relSel.type === r.type && relSel.id === r.id;
+    return `<div style="border:1px solid ${active ? "var(--accent,#B8872E)" : "var(--border)"};border-radius:10px;padding:12px;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;">
+        <div style="font-weight:700;font-size:14px;">${gcEsc(label)} <span style="background:${bg};color:${color};border-radius:999px;padding:1px 8px;font-size:11px;margin-left:6px;">${r.type === "facture" ? "Impayée" : "En attente"}</span></div>
+        <div style="font-weight:700;">${it.montant_ttc ? gcEsc(it.montant_ttc) + " €" : ""}</div>
+      </div>
+      <div style="font-size:13px;margin-top:4px;">${gcEsc(contactLabel(c))}${c && c.email ? "" : ` <span style="color:#C0392B;">(pas d'email)</span>`}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px;">${gcEsc(sub)} · Dernière relance : ${it.derniere_relance ? gcEsc(fmtDateFR(it.derniere_relance)) : "jamais"}</div>
+      <div style="margin-top:8px;"><button class="btn secondary" ${c && c.email ? "" : "disabled"} onclick="selectRelance('${r.type}', ${r.id})">Relancer</button></div>
+    </div>`;
+  }).join("");
+}
+function selectRelance(type, id) {
   const item = type === "facture" ? findFacture(id) : findDevis(id);
   const c = type === "facture" ? findContact(item.contact_id) : devisContact(item);
   if (!c || !c.email) { showToast("Ce contact n'a pas d'adresse email"); return; }
-
+  relSel = { type, id };
   const subject = type === "facture"
     ? `Relance — Facture ${item.numero || ""} en attente de règlement`
     : `Relance — Votre devis ${item.numero || ""}`;
   const body = type === "facture"
     ? `Bonjour ${c.prenom || ""},\n\nNous n'avons pas encore reçu le règlement de la facture ${item.numero || ""} d'un montant de ${item.montant_ttc || ""} €, échue le ${fmtDateFR(item.date_echeance)}.\n\nMerci de bien vouloir procéder au paiement dans les meilleurs délais.\n\nCordialement,\n${EMETTEUR.nom}`
     : `Bonjour ${c.prenom || ""},\n\nNous revenons vers vous concernant le devis ${item.numero || ""} qui vous a été envoyé. N'hésitez pas à nous faire part de vos questions ou à nous confirmer votre accord.\n\nCordialement,\n${EMETTEUR.nom}`;
-
-  const html = `
-    <div class="field"><label>Destinataire</label><input value="${escapeAttr(c.email)}" disabled></div>
-    <div class="field"><label>Objet</label><input id="relance-subject" value="${escapeAttr(subject)}"></div>
-    <div class="field"><label>Message</label><textarea id="relance-body" style="min-height:220px;">${body}</textarea></div>`;
-  openRawModal("Envoyer une relance", html, async () => {
-    const ok = await sendGoogleMail(c.email, document.getElementById("relance-subject").value, document.getElementById("relance-body").value);
-    if (ok) {
-      await updateRow(type === "facture" ? "factures" : "devis", id, { derniere_relance: todayStr() });
-      closeModal();
-      await refreshAll();
-    }
-  });
+  document.getElementById("rel-to").value = c.email;
+  document.getElementById("rel-subject").value = subject;
+  document.getElementById("rel-body").value = body;
+  document.getElementById("rel-ctx").textContent = `Relance ${type === "facture" ? "facture" : "devis"} ${item.numero || ""} · ${contactLabel(c)}`;
+  renderRelance();
+  document.getElementById("rel-body").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+function resetRelanceCompose() {
+  relSel = null;
+  ["rel-to", "rel-subject", "rel-body"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("rel-ctx").textContent = "";
+  renderRelance();
+}
+async function sendRelanceCompose() {
+  const to = document.getElementById("rel-to").value.trim();
+  const subject = document.getElementById("rel-subject").value.trim();
+  const body = document.getElementById("rel-body").value;
+  if (!to || !subject || !body.trim()) { showToast("Destinataire, objet et message sont obligatoires"); return; }
+  const btn = document.getElementById("rel-send");
+  btn.disabled = true; btn.textContent = "Envoi…";
+  const ok = await sendGoogleMail(to, subject, body);
+  btn.disabled = false; btn.textContent = "Envoyer via Gmail";
+  if (ok) {
+    if (relSel) await updateRow(relSel.type === "facture" ? "factures" : "devis", relSel.id, { derniere_relance: todayStr() });
+    resetRelanceCompose();
+    await refreshAll();
+  }
 }
 async function refreshAll() { await refreshCache(); renderPage(currentPage); }
 function goToFilter(page, selectId, value) {
@@ -3366,6 +3392,8 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("logout-btn").addEventListener("click", handleLogout);
   document.getElementById("theme-toggle-btn").addEventListener("click", toggleTheme);
   document.getElementById("btn-connect-google").addEventListener("click", connectGoogle);
+  document.getElementById("rel-send").addEventListener("click", sendRelanceCompose);
+  document.getElementById("rel-new").addEventListener("click", resetRelanceCompose);
   document.getElementById("menu-toggle-btn").addEventListener("click", openMobileMenu);
   document.getElementById("sidebar-overlay").addEventListener("click", closeMobileMenu);
   document.getElementById("global-search-btn").addEventListener("click", openGlobalSearch);

@@ -708,20 +708,28 @@
         <!-- RELANCE -->
         <div class="page" id="page-relance">
           <div class="page-title">Relance</div>
-          <div class="page-note">Nécessite d'avoir connecté ton compte Google (bas de la sidebar) pour pouvoir envoyer un mail via Gmail.</div>
-          <div class="panel">
-            <h3>Factures impayées en retard</h3>
-            <div class="table-scroll"><table class="data">
-              <thead><tr><th>Facture</th><th>Contact</th><th>Montant</th><th>Échéance</th><th>Dernière relance</th><th></th></tr></thead>
-              <tbody id="relance-factures-tbody"></tbody>
-            </table></div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+            <span id="relance-count" style="background:#FDECEC;color:#C0392B;border-radius:999px;padding:4px 12px;font-size:12.5px;font-weight:700;">0 à relancer</span>
+            <span id="relance-google-state" style="font-size:12.5px;color:var(--muted);"></span>
           </div>
-          <div class="panel">
-            <h3>Devis en attente de réponse</h3>
-            <div class="table-scroll"><table class="data">
-              <thead><tr><th>Devis</th><th>Contact</th><th>Montant</th><th>Envoyé le</th><th>Dernière relance</th><th></th></tr></thead>
-              <tbody id="relance-devis-tbody"></tbody>
-            </table></div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;align-items:start;">
+            <div class="panel" style="margin:0;">
+              <h3>Factures et devis à relancer</h3>
+              <div id="relance-list"></div>
+            </div>
+            <div class="panel" style="margin:0;">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                <h3 style="margin:0;">Composer un email</h3>
+                <button class="btn secondary" id="rel-new">Nouveau mail</button>
+              </div>
+              <div id="rel-ctx" style="font-size:12px;color:var(--muted);margin:6px 0 10px;"></div>
+              <div class="field"><label>Destinataire</label><input id="rel-to" type="email" placeholder="email@exemple.fr"></div>
+              <div class="field"><label>Objet</label><input id="rel-subject" placeholder="Objet du mail"></div>
+              <div class="field"><label>Message</label><textarea id="rel-body" style="min-height:240px;" placeholder="Rédige ton message…"></textarea></div>
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;">
+                <button class="btn" id="rel-send">Envoyer via Gmail</button>
+              </div>
+            </div>
           </div>
         </div>
 
