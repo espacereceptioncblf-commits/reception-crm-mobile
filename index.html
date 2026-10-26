@@ -500,6 +500,14 @@
             <tbody id="prospect-tbody"></tbody>
           </table></div>
           <div id="prospect-kanban" class="kanban-board" style="display:none;"></div>
+
+          <div class="panel" style="margin-top:20px;" id="prospect-archive-panel">
+            <h3 style="font-size:13px;">Dossiers annulés et réglés</h3>
+            <div class="table-scroll"><table class="data">
+              <thead><tr><th>Contact</th><th>Date</th><th>Statut évt</th><th>Facture</th><th></th></tr></thead>
+              <tbody id="prospect-archive-tbody"></tbody>
+            </table></div>
+          </div>
         </div>
 
         <!-- CONTACTS -->
@@ -633,7 +641,7 @@
           </div>
           <div class="page-note">Ces prestations alimentent la liste des désignations dans l'éditeur de devis, filtrées selon la saison de la date de l'évènement (Haute saison : 1er avril – 30 septembre · Basse saison : 1er octobre – 31 mars).</div>
           <div class="table-scroll"><table class="data">
-            <thead><tr><th>Prestation</th><th>Détails</th><th>Saison</th><th>PU TTC</th><th>TVA</th><th>Montant TVA</th><th>PU HT</th><th></th></tr></thead>
+            <thead><tr><th>Prestation</th><th>Détails</th><th>Tarifs (par saison)</th><th>TVA</th><th></th></tr></thead>
             <tbody id="grille-tbody"></tbody>
           </table></div>
         </div>
@@ -764,6 +772,28 @@
       </button>
     </div>
     <div id="gsearch-results"></div>
+  </div>
+</div>
+
+<div class="pdf-preview-overlay" id="quick-contact-overlay" style="z-index:97;">
+  <div class="pdf-preview-box" style="max-width:420px;height:auto;">
+    <div class="pdf-preview-head">
+      <strong>Nouveau contact rapide</strong>
+      <button type="button" id="quick-contact-close">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div style="padding:18px;">
+      <div class="field"><label>Nom</label><input id="qc-nom"></div>
+      <div class="field"><label>Prénom</label><input id="qc-prenom"></div>
+      <div class="field"><label>Catégorie</label><select id="qc-categorie"></select></div>
+      <div class="field"><label>Email</label><input id="qc-email"></div>
+      <div class="field"><label>Téléphone</label><input id="qc-telephone"></div>
+      <div class="modal-actions">
+        <button class="btn secondary" type="button" id="quick-contact-cancel">Annuler</button>
+        <button class="btn" type="button" id="quick-contact-save">Enregistrer</button>
+      </div>
+    </div>
   </div>
 </div>
 
