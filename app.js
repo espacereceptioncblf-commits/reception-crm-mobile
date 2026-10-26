@@ -659,6 +659,7 @@ function relanceItems() {
 }
 function renderRelance() {
   renderMailTemplates();
+  autoSeedMailTemplates();
   const items = relanceItems();
   const today = todayStr();
   document.getElementById("relance-count").textContent = items.length + (items.length > 1 ? " à relancer" : " à relancer");
@@ -703,6 +704,43 @@ function selectRelance(type, id) {
   document.getElementById("rel-body").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 // ---- Modèles de mail ----
+const DEFAULT_MAIL_TEMPLATES = [
+  { titre: "Facture - rappel amiable", type: "facture", objet: "Rappel - Facture [numéro]",
+    corps: "Bonjour [prénom],\n\nSauf erreur de notre part, la facture [numéro] d'un montant de [montant], échue le [échéance], n'a pas encore été réglée.\n\nSi votre paiement a été effectué entre-temps, merci de ne pas tenir compte de ce message. Dans le cas contraire, nous vous remercions de bien vouloir procéder au règlement dans les meilleurs délais.\n\nCordialement,\n[entreprise]" },
+  { titre: "Facture - 2e relance", type: "facture", objet: "2e relance - Facture [numéro] impayée",
+    corps: "Bonjour [prénom],\n\nMalgré notre précédent rappel, nous constatons que la facture [numéro] d'un montant de [montant] (échéance du [échéance]) reste impayée.\n\nNous vous remercions de bien vouloir régler cette somme sous 8 jours. Si vous rencontrez une difficulté, n'hésitez pas à nous contacter afin que nous trouvions une solution ensemble.\n\nCordialement,\n[entreprise]" },
+  { titre: "Facture - dernière relance avant mise en demeure", type: "facture", objet: "Dernière relance - Facture [numéro]",
+    corps: "Bonjour [prénom],\n\nNos précédentes relances concernant la facture [numéro] d'un montant de [montant] sont restées sans réponse.\n\nSans règlement de votre part sous 8 jours à compter de la réception de ce message, nous serons contraints d'engager une procédure de recouvrement.\n\nNous restons disponibles pour en discuter si besoin.\n\nCordialement,\n[entreprise]" },
+  { titre: "Acompte - rappel de versement", type: "facture", objet: "Rappel - Acompte [numéro] pour la réservation de votre date",
+    corps: "Bonjour [prénom],\n\nPour confirmer définitivement la réservation de votre date, nous attendons le versement de l'acompte [numéro] d'un montant de [montant].\n\nTant que cet acompte n'est pas reçu, la date reste simplement en option et peut être proposée à une autre demande.\n\nMerci de nous confirmer votre règlement.\n\nCordialement,\n[entreprise]" },
+  { titre: "Devis - première relance", type: "devis", objet: "Votre devis [numéro]",
+    corps: "Bonjour [prénom],\n\nNous revenons vers vous concernant le devis [numéro] que nous vous avons adressé.\n\nAvez-vous eu le temps d'en prendre connaissance ? Nous restons à votre disposition pour répondre à vos questions ou ajuster la proposition selon vos souhaits.\n\nCordialement,\n[entreprise]" },
+  { titre: "Devis - seconde relance", type: "devis", objet: "Devis [numéro] - toujours d'actualité ?",
+    corps: "Bonjour [prénom],\n\nSans nouvelle de votre part, nous nous permettons de relancer notre devis [numéro] d'un montant de [montant].\n\nSouhaitez-vous le valider, le modifier ou y renoncer ? Votre réponse nous permet de libérer la date si besoin.\n\nCordialement,\n[entreprise]" },
+  { titre: "Devis - date bientôt indisponible", type: "devis", objet: "Votre date est encore disponible - devis [numéro]",
+    corps: "Bonjour [prénom],\n\nNous vous informons que la date prévue dans le devis [numéro] est sollicitée par d'autres demandes. Pour la conserver, nous vous invitons à nous retourner le devis signé prochainement.\n\nN'hésitez pas à nous appeler pour en parler.\n\nCordialement,\n[entreprise]" },
+  { titre: "Suivi après visite", type: "libre", objet: "Suite à votre visite",
+    corps: "Bonjour [prénom],\n\nMerci d'être venu(e) découvrir notre lieu. Nous espérons que la visite vous a plu !\n\nSouhaitez-vous que nous vous préparions un devis pour votre projet ? Nous restons à votre écoute pour toute question.\n\nCordialement,\n[entreprise]" },
+  { titre: "Confirmation de rendez-vous", type: "libre", objet: "Confirmation de votre rendez-vous",
+    corps: "Bonjour [prénom],\n\nNous vous confirmons votre rendez-vous prévu prochainement. Merci de nous prévenir en cas d'empêchement afin de convenir d'un autre créneau.\n\nÀ très bientôt,\n[entreprise]" },
+  { titre: "Remerciement - paiement reçu", type: "facture", objet: "Paiement reçu - Facture [numéro]",
+    corps: "Bonjour [prénom],\n\nNous accusons bonne réception de votre règlement de [montant] pour la facture [numéro]. Nous vous en remercions.\n\nÀ bientôt,\n[entreprise]" },
+];
+async function seedDefaultMailTemplates(onlyMissing) {
+  const have = new Set(cache.mail_templates.map(t => t.titre));
+  const rows = DEFAULT_MAIL_TEMPLATES.filter(t => !onlyMissing || !have.has(t.titre)).map(t => ({ ...t, user_id: currentUser.id, date_creation: nowStr() }));
+  if (!rows.length) { showToast("Tous les modèles courants sont déjà là"); return; }
+  const { error } = await sb.from("mail_templates").insert(rows);
+  if (error) { showToast("Ajout des modèles impossible : " + error.message); return; }
+  await refreshCache(); renderRelance();
+}
+async function autoSeedMailTemplates() {
+  let done = false;
+  try { done = localStorage.getItem("cblf_tpl_seeded") === "1"; } catch (e) {}
+  if (done || cache.mail_templates.length) return;
+  try { localStorage.setItem("cblf_tpl_seeded", "1"); } catch (e) {}
+  await seedDefaultMailTemplates(true);
+}
 function relContext() {
   let item = null, c = null;
   if (relSel) {
@@ -3463,6 +3501,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("rel-send").addEventListener("click", sendRelanceCompose);
   document.getElementById("rel-new").addEventListener("click", resetRelanceCompose);
   document.getElementById("rel-tpl-new").addEventListener("click", () => openMailTemplateDialog());
+  document.getElementById("rel-tpl-defaults").addEventListener("click", () => seedDefaultMailTemplates(true));
   document.getElementById("menu-toggle-btn").addEventListener("click", openMobileMenu);
   document.getElementById("sidebar-overlay").addEventListener("click", closeMobileMenu);
   document.getElementById("global-search-btn").addEventListener("click", openGlobalSearch);
