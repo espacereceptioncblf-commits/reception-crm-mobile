@@ -40,7 +40,7 @@ async function callGoogleFunction(name, payload) {
     body: JSON.stringify(payload || {}),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "Erreur serveur");
+  if (!res.ok) throw new Error(data.error || data.message || data.msg || ("Erreur serveur (HTTP " + res.status + ")"));
   return data;
 }
 
@@ -809,7 +809,8 @@ function bindSearch(id, fn) {
 //  TODO
 // ========================================================================
 function contactOptionsHtml(selectedId, categories) {
-  const list = categories ? cache.contacts.filter(c => categories.includes(c.categorie)) : cache.contacts;
+  let list = categories ? cache.contacts.filter(c => categories.includes(c.categorie)) : cache.contacts;
+  list = [...list].sort((a, b) => contactLabel(a).localeCompare(contactLabel(b), "fr"));
   return list.map(c => `<option value="${c.id}" ${c.id === selectedId ? "selected" : ""}>${contactLabel(c)}</option>`).join("");
 }
 function devisOptionsHtml(selectedId) {
@@ -900,11 +901,32 @@ function openTodoDialog(id) {
 //  SUIVI CLIENTS  (une ligne par évènement/dossier)
 // ========================================================================
 let prospectView = "table";
+function isEventArchived(e) {
+  if (e.statut !== "Annulé") return false;
+  const dev = cache.devis.find(d => d.evenement_id === e.id);
+  const facs = cache.factures.filter(f => (e.facture_id && f.id === e.facture_id) || (dev && f.devis_id === dev.id));
+  return facs.length > 0 && facs.every(f => f.statut === "Payée");
+}
 function renderSuivi() {
   ensureFilterOptions("prospect-filter-statut", STATUTS_EVENEMENT);
   const filter = document.getElementById("prospect-filter-statut").value;
-  let rows = [...cache.evenements].sort((a, b) => (a.date_evenement || "9999").localeCompare(b.date_evenement || "9999"));
+  let allRows = [...cache.evenements].sort((a, b) => (a.date_evenement || "9999").localeCompare(b.date_evenement || "9999"));
+  const archived = allRows.filter(isEventArchived);
+  let rows = allRows.filter(e => !isEventArchived(e));
   if (filter) rows = rows.filter(e => e.statut === filter);
+
+  document.getElementById("prospect-archive-tbody").innerHTML = archived.length ? archived.map(e => {
+    const dev = cache.devis.find(d => d.evenement_id === e.id);
+    const facs = cache.factures.filter(f => (e.facture_id && f.id === e.facture_id) || (dev && f.devis_id === dev.id));
+    return `<tr>
+      <td>${contactLabel(findContact(e.contact_id))}</td>
+      <td>${eventDateLabel(e) || "—"}</td>
+      <td>${badge(e.statut, STATUT_COLORS[e.statut])}</td>
+      <td>${facs[0] ? badge(facs[0].statut, STATUT_COLORS[facs[0].statut]) : "—"}</td>
+      <td class="row-actions"><button title="Fiche récap" onclick="openEventRecap(${e.id})">${icon("clipboard",14)}</button></td>
+    </tr>`;
+  }).join("") : `<tr class="empty-row"><td colspan="5">Aucun dossier archivé</td></tr>`;
+  document.getElementById("prospect-archive-panel").style.display = archived.length ? "block" : "none";
 
   document.getElementById("prospect-view-select").value = prospectView;
   document.getElementById("prospect-table-view").style.display = prospectView === "table" ? "table" : "none";
@@ -1890,9 +1912,6 @@ function openFactureDialog(id, prefill) {
       <select name="statut" id="fac-statut-select">${STATUTS_FACTURE.map(s => `<option value="${s}" ${s === (row.statut || "Brouillon") ? "selected" : ""}>${s}</option>`).join("")}</select>
     </div>
     <div class="field" id="fac-datepaiement-field" style="display:none;"><label>Date de paiement</label><input type="date" name="date_paiement" value="${row.date_paiement || ""}"></div>
-    <div class="field"><label>Joindre un PDF (facture signée / preuve)</label><input type="file" id="fac-pdf" accept="application/pdf">
-      ${row.pdf_path ? `<div style="margin-top:6px;"><button type="button" class="btn secondary" onclick="downloadAttachment('${row.pdf_path}')">${icon("paperclip",13)} Voir le PDF actuel</button></div>` : ""}
-    </div>
     <div class="field"><label>Notes</label><textarea name="notes">${row.notes || ""}</textarea></div>`;
 
   openRawModal(id ? "Modifier la facture" : "Nouvelle facture", html, () => saveFactureDialog(id));
@@ -1982,12 +2001,6 @@ async function saveFactureDialog(id) {
   };
   let saved = id ? await updateRow("factures", id, values) : await insertRow("factures", values);
   if (!saved) return;
-  const fileEl = document.getElementById("fac-pdf");
-  if (fileEl && fileEl.files && fileEl.files[0]) {
-    const path = `${currentUser.id}/factures-${saved.id}.pdf`;
-    const { error } = await sb.storage.from("devis-signes").upload(path, fileEl.files[0], { upsert: true, contentType: "application/pdf" });
-    if (!error) await updateRow("factures", saved.id, { pdf_path: path });
-  }
   showToast(id ? "Facture mise à jour" : "Facture créée");
   closeModal();
   await refreshAll();
@@ -2142,9 +2155,45 @@ function renderEvenements() {
   document.getElementById("evenement-past-more-wrap").style.display = (!evenementPastShowAll && past.length > pastVisible.length) ? "block" : "none";
 }
 
+let quickContactCallback = null;
+function openQuickContactAdd(callback) {
+  quickContactCallback = callback;
+  document.getElementById("qc-nom").value = "";
+  document.getElementById("qc-prenom").value = "";
+  document.getElementById("qc-categorie").innerHTML = CATEGORIES_CONTACT.map(c => `<option value="${c}" ${c === "Client" ? "selected" : ""}>${c}</option>`).join("");
+  document.getElementById("qc-email").value = "";
+  document.getElementById("qc-telephone").value = "";
+  document.getElementById("quick-contact-overlay").classList.add("open");
+}
+function closeQuickContactAdd() { document.getElementById("quick-contact-overlay").classList.remove("open"); }
+async function saveQuickContactAdd() {
+  const nom = document.getElementById("qc-nom").value.trim();
+  const prenom = document.getElementById("qc-prenom").value.trim();
+  if (!nom && !prenom) { showToast("Renseigne au moins un nom ou un prénom"); return; }
+  const values = {
+    nom: nom || null, prenom: prenom || null,
+    categorie: document.getElementById("qc-categorie").value,
+    email: document.getElementById("qc-email").value || null,
+    telephone: document.getElementById("qc-telephone").value || null,
+  };
+  const saved = await insertRow("contacts", values);
+  if (!saved) return;
+  showToast("Contact ajouté");
+  await refreshCache();
+  closeQuickContactAdd();
+  if (quickContactCallback) quickContactCallback(saved);
+}
+
+function nextRdvInfoText(row) {
+  const today = todayStr();
+  const next = cache.rdv.filter(r => r.evenement_id === row.id && r.statut !== "Annulé" && r.date_rdv && r.date_rdv >= today)
+    .sort((a, b) => a.date_rdv.localeCompare(b.date_rdv))[0];
+  if (next) return `RDV prévu le ${fmtDateFR(next.date_rdv)}${next.heure ? " à " + next.heure : ""}`;
+  return row.prochain_rdv_adefinir ? "À définir" : "Aucun RDV programmé";
+}
 function openEvenementDialog(id, defaultDate) {
   const row = id ? cache.evenements.find(e => e.id === id) : {};
-  let adefinirFlag = false, arelancerFlag = false;
+  let adefinirFlag = false, arelancerFlag = false, derniereActionChanged = false;
   openModal({
     title: id ? "Modifier l'évènement" : "Nouvel évènement",
     table: "evenements", id,
@@ -2168,7 +2217,7 @@ function openEvenementDialog(id, defaultDate) {
       { key: "montant_acompte_recu", label: "Montant acompte reçu (€)", type: "number", value: row.montant_acompte_recu },
       { key: "budget", label: "Budget (€)", type: "number", value: row.budget },
       { key: "derniere_action", label: "Dernière action", type: "text", value: row.derniere_action },
-      { key: "prochain_rdv", label: "Prochain RDV", type: "date", value: row.prochain_rdv },
+      { key: "prochain_rdv_info", label: "Prochain RDV", type: "computed", value: nextRdvInfoText(row) },
       { key: "prochain_rdv_adefinir", label: "Prochain RDV à définir (crée une tâche « Prendre rendez-vous »)", type: "checkbox", value: !!row.prochain_rdv_adefinir },
       { key: "arelancer", label: "À relancer (crée une tâche « Relancer »)", type: "checkbox", value: !!row.arelancer },
       { key: "notes", label: "Notes", type: "textarea", value: row.notes },
@@ -2179,8 +2228,19 @@ function openEvenementDialog(id, defaultDate) {
       form.elements["nb_enfants"].addEventListener("input", calc);
       form.elements["contact_id"].addEventListener("change", () => { const c = findContact(Number(form.elements["contact_id"].value)); if (c && c.provenance && !form.elements["provenance"].value) form.elements["provenance"].value = c.provenance; });
       calc();
-      // Bouton "Prendre RDV" à côté du champ prochain RDV
-      const rdvField = form.elements["prochain_rdv"].closest(".field");
+      // Bouton "Nouveau contact" à côté du champ contact, sans fermer l'évènement en cours
+      const contactField = form.elements["contact_id"].closest(".field");
+      const newContactBtn = document.createElement("button");
+      newContactBtn.type = "button"; newContactBtn.className = "btn secondary"; newContactBtn.style.marginTop = "6px";
+      newContactBtn.innerHTML = icon("plus", 13) + " Nouveau contact";
+      newContactBtn.onclick = () => openQuickContactAdd((newContact) => {
+        form.elements["contact_id"].innerHTML = `<option value="">—</option>` + contactOptionsHtml(newContact.id, ["Client", "Prospect"]);
+        form.elements["contact_id"].value = newContact.id;
+        if (newContact.provenance && !form.elements["provenance"].value) form.elements["provenance"].value = newContact.provenance;
+      });
+      contactField.appendChild(newContactBtn);
+      // Bouton "Prendre RDV" à côté de l'info RDV
+      const rdvField = form.elements["prochain_rdv_info"].closest(".field");
       const rdvBtn = document.createElement("button");
       rdvBtn.type = "button"; rdvBtn.className = "btn secondary"; rdvBtn.style.marginTop = "6px";
       rdvBtn.innerHTML = icon("users", 13) + " Prendre RDV directement";
@@ -2205,10 +2265,16 @@ function openEvenementDialog(id, defaultDate) {
     beforeSave: (values) => {
       adefinirFlag = !!values.prochain_rdv_adefinir && !row.prochain_rdv_adefinir;
       arelancerFlag = !!values.arelancer && !row.arelancer;
+      delete values.prochain_rdv_info;
+      derniereActionChanged = values.derniere_action && values.derniere_action !== row.derniere_action;
     },
     onSaved: async (saved) => {
       if (adefinirFlag) await insertRow("todos", { titre: "Prendre rendez-vous", evenement_id: saved.id, priorite: "Basse", statut: "À faire" });
       if (arelancerFlag) await insertRow("todos", { titre: "Relancer", evenement_id: saved.id, priorite: "Basse", statut: "À faire" });
+      if (derniereActionChanged) {
+        const historique = [...(saved.historique || []), { date: todayStr(), texte: saved.derniere_action }];
+        await updateRow("evenements", saved.id, { historique });
+      }
       // Passage automatique Prospect -> Client quand l'évènement est confirmé
       if (saved.statut === "Confirmé" && saved.contact_id) {
         const c = findContact(saved.contact_id);
@@ -2280,14 +2346,26 @@ function renderGrille() {
   let rows = [...cache.grille_tarifaire];
   if (search) rows = rows.filter(g => ((g.nom_presta || "") + " " + (g.details || "")).toLowerCase().includes(search));
   if (fSaison) rows = rows.filter(g => (g.saison || "Toute l'année") === fSaison);
+  const groups = {};
+  rows.forEach(g => { const key = g.nom_presta || "—"; (groups[key] = groups[key] || []).push(g); });
+  const groupKeys = Object.keys(groups).sort((a, b) => a.localeCompare(b, "fr"));
   const tbody = document.getElementById("grille-tbody");
-  tbody.innerHTML = rows.length ? rows.map(g => `
-    <tr>
-      <td>${g.nom_presta || "—"}</td><td>${g.details || "—"}</td><td>${g.saison || "Toute l'année"}</td>
-      <td><strong>${g.pu_ttc != null ? g.pu_ttc + " €" : "—"}</strong></td><td>${g.tva != null ? g.tva + " %" : "—"}</td>
-      <td>${g.montant_tva != null ? g.montant_tva + " €" : "—"}</td><td>${g.pu_ht != null ? g.pu_ht + " €" : "—"}</td>
-      <td class="row-actions"><button onclick="openGrilleDialog(${g.id})">${icon("edit",14)}</button><button onclick="confirmDelete('grille_tarifaire', ${g.id}, renderGrille)">${icon("trash",14)}</button></td>
-    </tr>`).join("") : emptyState(8, "Ta grille tarifaire est vide", "Ajouter ta première prestation", "openGrilleDialog(null)");
+  tbody.innerHTML = groupKeys.length ? groupKeys.map(key => {
+    const items = groups[key].sort((a, b) => (a.saison || "").localeCompare(b.saison || ""));
+    const first = items[0];
+    const prixHtml = items.map(g => `<div style="display:flex;align-items:center;gap:6px;margin:2px 0;">
+        <span style="min-width:110px;color:var(--muted);">${g.saison || "Toute l'année"} :</span>
+        <strong>${g.pu_ttc != null ? g.pu_ttc + " € TTC" : "—"}</strong>
+        <button title="Modifier ce tarif" onclick="openGrilleDialog(${g.id})" style="background:none;border:none;color:var(--muted);">${icon("edit",11)}</button>
+        <button title="Supprimer ce tarif" onclick="confirmDelete('grille_tarifaire', ${g.id}, renderGrille)" style="background:none;border:none;color:var(--muted);">${icon("trash",11)}</button>
+      </div>`).join("");
+    return `<tr>
+      <td>${key}</td><td>${first.details || "—"}</td>
+      <td>${prixHtml}</td>
+      <td>${first.tva != null ? first.tva + " %" : "—"}</td>
+      <td class="row-actions"><button title="Ajouter un tarif pour une autre saison" onclick="openGrilleDialog(null, ${JSON.stringify(first).replace(/"/g, "&quot;")})">${icon("plus",14)}</button></td>
+    </tr>`;
+  }).join("") : emptyState(5, "Ta grille tarifaire est vide", "Ajouter ta première prestation", "openGrilleDialog(null)");
 }
 function openGrilleDialog(id, dupFrom) {
   const row = id ? findGrille(id) : (dupFrom ? { nom_presta: dupFrom.nom_presta, details: dupFrom.details, notes_internes: dupFrom.notes_internes } : {});
@@ -2758,12 +2836,21 @@ function renderNotes() {
       <td>${n.titre || "—"}</td>
       <td>${n.categorie || "—"}</td>
       <td class="row-actions">
+        <button title="Aperçu" onclick="openNotePreview(${n.id})">${icon("eye",14)}</button>
         <button title="Éditer" onclick="openNoteEditor(${n.id})">${icon("edit",14)}</button>
         <button title="Exporter en PDF" onclick="exportNotePDF(${n.id})">${icon("download",14)}</button>
         <button title="Voir les liens" onclick="openNoteLiens(${n.id})">${icon("link",14)}</button>
         <button title="Supprimer" onclick="confirmDelete('notes', ${n.id}, renderNotes)">${icon("trash",14)}</button>
       </td>
     </tr>`).join("") : emptyState(3, "Aucune note pour l'instant", "Créer ta première note", "openNoteEditor(null)");
+}
+function openNotePreview(id) {
+  const n = findNote(id);
+  if (!n) return;
+  const html = `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">${n.categorie || "Sans catégorie"} · ${fmtDateFR((n.date_modif || n.date_creation || "").slice(0, 10)) || ""}</div>
+    <div style="font-size:14px;line-height:1.6;white-space:pre-wrap;background:#FAFAF8;border:1px solid var(--border);border-radius:8px;padding:14px;min-height:120px;">${n.contenu || "—"}</div>`;
+  showInfoModal(n.titre || "Note", html);
 }
 
 function fillNoteCategorieSelect(selected) {
@@ -3192,6 +3279,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("sidebar-overlay").addEventListener("click", closeMobileMenu);
   document.getElementById("global-search-btn").addEventListener("click", openGlobalSearch);
   document.getElementById("pdf-preview-close").addEventListener("click", closePdfPreview);
+  document.getElementById("quick-contact-close").addEventListener("click", closeQuickContactAdd);
+  document.getElementById("quick-contact-cancel").addEventListener("click", closeQuickContactAdd);
+  document.getElementById("quick-contact-save").addEventListener("click", saveQuickContactAdd);
   document.getElementById("pdf-preview-overlay").addEventListener("click", (e) => { if (e.target.id === "pdf-preview-overlay") closePdfPreview(); });
   document.getElementById("notif-bell-btn").addEventListener("click", (e) => { e.stopPropagation(); toggleNotifPanel(); });
   document.getElementById("notif-enable-btn").addEventListener("click", (e) => { e.stopPropagation(); enableBrowserNotifications(); });
