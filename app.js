@@ -54,7 +54,9 @@ async function checkGoogleConnection() {
 }
 function updateGoogleStatusUI() {
   const el = document.getElementById("google-status-label");
-  if (el) el.textContent = googleConnected ? `Connecté (${googleEmail})` : "Non connecté";
+  if (el) el.textContent = googleConnected ? `Google : ${googleEmail}` : "Google non connecté";
+  const gb = document.getElementById("google-badge");
+  if (gb) gb.style.display = googleConnected ? "inline-flex" : "none";
   const btn = document.getElementById("btn-connect-google");
   if (btn) btn.textContent = googleConnected ? "Reconnecter Google" : "Connecter Google";
 }
@@ -2559,11 +2561,98 @@ function calLegendHtml() {
   const items = [...TYPES_EVENEMENT, "Autre"];
   return items.map(t => `<span><i style="background:${TYPE_EVENEMENT_COLORS[t] || "#9297A3"};"></i>${t}</span>`).join("");
 }
+// ---- Vue Google Agenda (liste par date, fusionnée avec les évènements de l'appli) ----
+let gcal = { key: null, items: [], loading: false, error: null };
+function gcEsc(v) { return String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+async function loadGoogleEvents(force) {
+  const { year, month } = calState;
+  const key = `${year}-${month}`;
+  if (!googleConnected) return;
+  if (!force && gcal.key === key && !gcal.error) return;
+  gcal.loading = true; gcal.error = null; renderCalendrierGoogle();
+  try {
+    const start = new Date(year, month - 1, 1), end = new Date(year, month, 1);
+    const res = await callGoogleFunction("google-calendar-sync", { action: "list", timeMin: start.toISOString(), timeMax: end.toISOString() });
+    gcal.items = res.items || [];
+    gcal.key = key;
+  } catch (e) {
+    gcal.error = e.message; gcal.items = [];
+  }
+  gcal.loading = false;
+  if (calState.view === "google") renderCalendrierGoogle();
+}
+async function pushEventToGoogle(id) {
+  const ev = cache.evenements.find(e => e.id === id);
+  if (!ev) return;
+  await syncEventToGoogle(ev);
+  await refreshCache();
+  await loadGoogleEvents(true);
+}
+function renderCalendrierGoogle() {
+  const panel = document.getElementById("cal-google-panel");
+  const { year, month } = calState;
+  document.getElementById("cal-month-lbl").textContent = `${MOIS_FR[month - 1]} ${year}`;
+  const head = `<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px;">
+    <div style="font-size:13px;color:var(--text-muted,#8A8F98);">Google Agenda${googleConnected ? " · " + gcEsc(googleEmail) : ""}</div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn" onclick="loadGoogleEvents(true)">Actualiser</button>
+      <a class="btn" href="https://calendar.google.com/" target="_blank" rel="noopener" style="text-decoration:none;">Ouvrir Google Agenda</a>
+    </div></div>`;
+  if (!googleConnected) {
+    panel.innerHTML = head + `<div style="padding:24px;text-align:center;">Connecte ton compte Google (bouton en bas du menu) pour voir ton agenda ici.</div>`;
+    return;
+  }
+  if (gcal.loading) { panel.innerHTML = head + `<div style="padding:24px;text-align:center;">Chargement de Google Agenda…</div>`; return; }
+  if (gcal.error) { panel.innerHTML = head + `<div style="padding:24px;text-align:center;color:#C0392B;">Erreur : ${gcEsc(gcal.error)}</div>`; return; }
+
+  const prefix = `${year}-${String(month).padStart(2, "0")}`;
+  const appEvents = cache.evenements.filter(e => e.date_evenement && e.date_evenement.startsWith(prefix));
+  const byGoogleId = {}; appEvents.forEach(e => { if (e.google_event_id) byGoogleId[e.google_event_id] = e; });
+  const rows = [];
+  const seen = new Set();
+  gcal.items.forEach(g => {
+    const iso = (g.start || "").slice(0, 10);
+    const time = g.allDay ? "Toute la journée" : (g.start || "").slice(11, 16) + (g.end ? " – " + g.end.slice(11, 16) : "");
+    const app = byGoogleId[g.id];
+    if (app) seen.add(app.id);
+    rows.push({ iso, time, title: g.summary || "(Sans titre)", loc: g.location || "", tag: app ? "linked" : "google", app, link: g.htmlLink });
+  });
+  appEvents.forEach(e => {
+    if (seen.has(e.id)) return;
+    rows.push({ iso: e.date_evenement, time: e.heure_debut ? e.heure_debut + (e.heure_fin ? " – " + e.heure_fin : "") : "Toute la journée", title: eventLabel(e), loc: "", tag: "app", app: e });
+  });
+  rows.sort((a, b) => a.iso.localeCompare(b.iso) || a.time.localeCompare(b.time));
+  if (!rows.length) { panel.innerHTML = head + `<div style="padding:24px;text-align:center;">Aucun évènement ce mois-ci.</div>`; return; }
+
+  const TAG = {
+    linked: `<span style="background:#E3F4EA;color:#2F8F5B;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:600;">Synchronisé</span>`,
+    google: `<span style="background:#E4EDFD;color:#3B6FD4;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:600;">Google seulement</span>`,
+    app: `<span style="background:#FDF1DA;color:#B7791F;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:600;">Appli seulement</span>`,
+  };
+  let html = head, lastDate = null;
+  rows.forEach(r => {
+    if (r.iso !== lastDate) {
+      html += `<div style="font-weight:700;font-size:13px;margin:16px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border);">${gcEsc(fmtDateFR(r.iso))}</div>`;
+      lastDate = r.iso;
+    }
+    const click = r.app ? `onclick="openEvenementDialog(${r.app.id})" style="cursor:pointer;` : (r.link ? `onclick="window.open('${gcEsc(r.link)}','_blank')" style="cursor:pointer;` : `style="`);
+    const push = r.tag === "app" ? `<button class="btn" onclick="event.stopPropagation();pushEventToGoogle(${r.app.id})">Envoyer vers Google</button>` : "";
+    html += `<div ${click}display:flex;align-items:center;gap:12px;padding:8px 4px;flex-wrap:wrap;">
+      <div style="min-width:120px;font-size:12.5px;color:var(--text-muted,#8A8F98);">${gcEsc(r.time)}</div>
+      <div style="flex:1;min-width:160px;"><div style="font-size:13.5px;">${gcEsc(r.title)}</div>${r.loc ? `<div style="font-size:11.5px;color:var(--text-muted,#8A8F98);">${gcEsc(r.loc)}</div>` : ""}</div>
+      ${TAG[r.tag]}${push}</div>`;
+  });
+  panel.innerHTML = html;
+}
 function renderCalendrier() {
   document.getElementById("cal-grid").style.display = calState.view === "month" ? "grid" : "none";
   document.getElementById("cal-year-grid").style.display = calState.view === "year" ? "grid" : "none";
+  document.getElementById("cal-google-panel").style.display = calState.view === "google" ? "block" : "none";
+  const dayPanel = document.getElementById("cal-day-panel");
+  if (dayPanel) dayPanel.style.display = calState.view === "google" ? "none" : "";
   document.getElementById("cal-view-select").value = calState.view;
-  document.getElementById("cal-legend").innerHTML = calLegendHtml();
+  document.getElementById("cal-legend").innerHTML = calState.view === "google" ? "" : calLegendHtml();
+  if (calState.view === "google") { renderCalendrierGoogle(); loadGoogleEvents(false); return; }
   if (calState.view === "year") { renderCalendrierYear(); return; }
   renderCalendrierMonth();
 }
