@@ -584,16 +584,18 @@ async function onLoggedIn(user) {
 }
 function handleGoogleOAuthReturn() {
   const params = new URLSearchParams(window.location.search);
-  if (params.get("google_connected")) {
+  if (params.get("google_connected") || params.get("google") === "ok") {
     showToast("Compte Google connecté !");
     checkGoogleConnection();
-  } else if (params.get("google_error")) {
-    showToast("Erreur : connexion Google échouée (" + params.get("google_error") + ")");
+  } else if (params.get("google_error") || params.get("google") === "erreur") {
+    showToast("Erreur : connexion Google échouée (" + (params.get("google_error") || params.get("msg") || "") + ")");
   } else {
     return;
   }
   params.delete("google_connected");
   params.delete("google_error");
+  params.delete("google");
+  params.delete("msg");
   const clean = window.location.pathname + (params.toString() ? "?" + params.toString() : "");
   window.history.replaceState({}, "", clean);
 }
