@@ -520,7 +520,7 @@ async function deleteRow(table, id) {
   return true;
 }
 async function refreshCache() {
-  const [contacts, prospects, devisRows, evenements, todos, grille, rdv, factures, commandes, prestataires, notes, noteCategories, cgvOptions, typesFacture] = await Promise.all([
+  const [contacts, prospects, devisRows, evenements, todos, grille, rdv, factures, commandes, prestataires, notes, noteCategories, cgvOptions, typesFacture, mailTemplates] = await Promise.all([
     fetchAll("contacts", "nom", true),
     fetchAll("prospects"),
     fetchAll("devis"),
@@ -535,8 +535,9 @@ async function refreshCache() {
     fetchAll("note_categories", "nom", true),
     fetchAll("cgv_options", "ordre", true),
     fetchAll("types_facture", "designation", true),
+    sb.from("mail_templates").select("*").order("titre", { ascending: true }).then(r => r.data || [], () => []),
   ]);
-  cache = { contacts, prospects, devis: devisRows, evenements, todos, grille_tarifaire: grille, rdv, factures, commandes, prestataires, notes, note_categories: noteCategories, cgv_options: cgvOptions, types_facture: typesFacture };
+  cache = { contacts, prospects, devis: devisRows, evenements, todos, grille_tarifaire: grille, rdv, factures, commandes, prestataires, notes, note_categories: noteCategories, cgv_options: cgvOptions, types_facture: typesFacture, mail_templates: mailTemplates };
 }
 
 // ========================================================================
@@ -657,6 +658,7 @@ function relanceItems() {
   return out;
 }
 function renderRelance() {
+  renderMailTemplates();
   const items = relanceItems();
   const today = todayStr();
   document.getElementById("relance-count").textContent = items.length + (items.length > 1 ? " à relancer" : " à relancer");
@@ -699,6 +701,72 @@ function selectRelance(type, id) {
   document.getElementById("rel-ctx").textContent = `Relance ${type === "facture" ? "facture" : "devis"} ${item.numero || ""} · ${contactLabel(c)}`;
   renderRelance();
   document.getElementById("rel-body").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+// ---- Modèles de mail ----
+function relContext() {
+  let item = null, c = null;
+  if (relSel) {
+    item = relSel.type === "facture" ? findFacture(relSel.id) : findDevis(relSel.id);
+    c = relSel.type === "facture" ? findContact(item && item.contact_id) : devisContact(item);
+  } else {
+    const mail = (document.getElementById("rel-to").value || "").trim().toLowerCase();
+    c = cache.contacts.find(x => x.email && x.email.toLowerCase() === mail) || null;
+  }
+  return { item, c };
+}
+function fillTemplate(txt) {
+  const { item, c } = relContext();
+  const map = {
+    "prénom": (c && c.prenom) || "", "prenom": (c && c.prenom) || "", "nom": (c && c.nom) || "",
+    "numéro": (item && item.numero) || "", "numero": (item && item.numero) || "",
+    "montant": item && item.montant_ttc ? item.montant_ttc + " €" : "",
+    "échéance": item && item.date_echeance ? fmtDateFR(item.date_echeance) : "", "echeance": item && item.date_echeance ? fmtDateFR(item.date_echeance) : "",
+    "entreprise": EMETTEUR.nom || "",
+  };
+  return String(txt || "").replace(/\[([^\]]+)\]/g, (m, k) => { const v = map[k.trim().toLowerCase()]; return v === undefined ? m : v; });
+}
+function useMailTemplate(id) {
+  const t = cache.mail_templates.find(x => x.id === id);
+  if (!t) return;
+  document.getElementById("rel-subject").value = fillTemplate(t.objet);
+  document.getElementById("rel-body").value = fillTemplate(t.corps);
+  document.getElementById("rel-ctx").textContent = (document.getElementById("rel-ctx").textContent.split(" · Modèle")[0] || "") + " · Modèle : " + t.titre;
+  document.getElementById("rel-body").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+function renderMailTemplates() {
+  const box = document.getElementById("rel-tpl-list");
+  if (!box) return;
+  const TYPES = { facture: "Facture", devis: "Devis", libre: "Libre" };
+  box.innerHTML = cache.mail_templates.length ? cache.mail_templates.map(t => `
+    <div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <div style="flex:1;min-width:180px;"><div style="font-weight:700;font-size:13.5px;">${gcEsc(t.titre)} <span style="background:#EEF0F4;color:#555;border-radius:999px;padding:1px 8px;font-size:11px;margin-left:6px;">${TYPES[t.type] || "Libre"}</span></div>
+        <div style="font-size:12px;color:var(--muted);">${gcEsc(t.objet || "")}</div></div>
+      <button class="btn" onclick="useMailTemplate(${t.id})">Utiliser</button>
+      <button class="btn secondary" onclick="openMailTemplateDialog(${t.id})">Modifier</button>
+      <button class="btn secondary" onclick="deleteMailTemplate(${t.id})">Supprimer</button>
+    </div>`).join("") : `<div style="padding:14px;text-align:center;color:var(--muted);font-size:13px;">Aucun modèle pour l'instant. Clique sur « Nouveau modèle » pour en préparer un.</div>`;
+}
+function openMailTemplateDialog(id) {
+  const t = id ? cache.mail_templates.find(x => x.id === id) : null;
+  const html = `
+    <div class="field"><label>Nom du modèle</label><input id="tpl-titre" value="${escapeAttr(t ? t.titre : "")}" placeholder="Ex : 1re relance facture"></div>
+    <div class="field"><label>Type</label><select id="tpl-type">
+      ${["libre", "facture", "devis"].map(v => `<option value="${v}" ${t && t.type === v ? "selected" : ""}>${{ libre: "Libre", facture: "Facture", devis: "Devis" }[v]}</option>`).join("")}
+    </select></div>
+    <div class="field"><label>Objet</label><input id="tpl-objet" value="${escapeAttr(t ? (t.objet || "") : "")}" placeholder="Ex : Relance — Facture [numéro]"></div>
+    <div class="field"><label>Message</label><textarea id="tpl-corps" style="min-height:220px;" placeholder="Bonjour [prénom], …">${gcEsc(t ? (t.corps || "") : "")}</textarea></div>
+    <div style="font-size:12px;color:var(--muted);">Variables : [prénom] [nom] [numéro] [montant] [échéance] [entreprise]</div>`;
+  openRawModal(t ? "Modifier le modèle" : "Nouveau modèle", html, async () => {
+    const titre = document.getElementById("tpl-titre").value.trim();
+    if (!titre) { showToast("Donne un nom au modèle"); return; }
+    const values = { titre, type: document.getElementById("tpl-type").value, objet: document.getElementById("tpl-objet").value, corps: document.getElementById("tpl-corps").value };
+    const res = t ? await updateRow("mail_templates", t.id, values) : await insertRow("mail_templates", values);
+    if (res) { closeModal(); await refreshCache(); renderRelance(); }
+  });
+}
+async function deleteMailTemplate(id) {
+  if (!confirm("Supprimer ce modèle ?")) return;
+  if (await deleteRow("mail_templates", id)) { await refreshCache(); renderRelance(); }
 }
 function resetRelanceCompose() {
   relSel = null;
@@ -3394,6 +3462,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-connect-google").addEventListener("click", connectGoogle);
   document.getElementById("rel-send").addEventListener("click", sendRelanceCompose);
   document.getElementById("rel-new").addEventListener("click", resetRelanceCompose);
+  document.getElementById("rel-tpl-new").addEventListener("click", () => openMailTemplateDialog());
   document.getElementById("menu-toggle-btn").addEventListener("click", openMobileMenu);
   document.getElementById("sidebar-overlay").addEventListener("click", closeMobileMenu);
   document.getElementById("global-search-btn").addEventListener("click", openGlobalSearch);

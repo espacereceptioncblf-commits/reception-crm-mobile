@@ -351,7 +351,6 @@
       <div class="nav-item" data-page="prospects"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg><span>Suivi Clients</span></div>
       <div class="nav-item" data-page="evenements"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>Évènements</span></div>
       <div class="nav-item" data-page="contacts"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>Contacts</span></div>
-      <div class="nav-item" data-page="mail"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z" opacity="0"/><path d="M22 6l-10 7L2 6"/><rect x="2" y="4" width="20" height="16" rx="2"/></svg><span>Mail</span></div>
 
       <div class="nav-section-label">Ventes</div>
       <div class="nav-item" data-page="devis"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span>Devis</span></div>
@@ -731,17 +730,13 @@
               </div>
             </div>
           </div>
-        </div>
-
-        <!-- MAIL (placeholder) -->
-        <div class="page" id="page-mail">
-          <div class="page-title">Mail</div>
-          <div class="panel">
-            <h3>À venir</h3>
-            <p style="font-size:13.5px;color:var(--muted);line-height:1.6;">
-              L'onglet Mail (boîte de réception connectée à ta messagerie, modèles automatisés, mails programmés) est un chantier à part entière : il demande de connecter l'appli à un vrai service mail (Gmail/Outlook) via leur API officielle.<br><br>
-              C'est prévu, mais traité séparément du reste pour ne rien précipiter — dis-le quand tu veux qu'on s'y attaque.
-            </p>
+          <div class="panel" style="margin-top:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+              <h3 style="margin:0;">Modèles de mail</h3>
+              <button class="btn" id="rel-tpl-new">+ Nouveau modèle</button>
+            </div>
+            <div style="font-size:12px;color:var(--muted);margin:6px 0 10px;">Variables disponibles : [prénom] [nom] [numéro] [montant] [échéance] [entreprise]. Elles se remplissent toutes seules à l'utilisation.</div>
+            <div id="rel-tpl-list"></div>
           </div>
         </div>
 
